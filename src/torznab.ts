@@ -21,8 +21,13 @@ function toRfc2822(date: Date): string {
 function buildCategoryElements(): string {
   const parents = new Map<number, Set<number>>();
   const parentNames = new Map<number, string>([
-    [1000, "PC/Games"], [2000, "Movies"], [3000, "Audio"],
-    [4000, "PC"], [5000, "TV"], [7000, "Books"], [8000, "Other"],
+    [1000, "PC/Games"],
+    [2000, "Movies"],
+    [3000, "Audio"],
+    [4000, "PC"],
+    [5000, "TV"],
+    [7000, "Books"],
+    [8000, "Other"],
   ]);
 
   for (const cat of CATEGORIES) {
@@ -35,10 +40,10 @@ function buildCategoryElements(): string {
     .sort(([a], [b]) => a - b)
     .map(([parentId, subIds]) => {
       const subcats = [...subIds]
-        .filter(id => id !== parentId)
+        .filter((id) => id !== parentId)
         .sort()
-        .map(id => {
-          const cat = CATEGORIES.find(c => c.torznabId === id);
+        .map((id) => {
+          const cat = CATEGORIES.find((c) => c.torznabId === id);
           return `    <subcat id="${id}" name="${xmlEscape(cat?.tbdTitle ?? String(id))}"/>`;
         })
         .join("\n");
@@ -68,14 +73,15 @@ ${buildCategoryElements()}
 export function buildSearchXml(
   items: TorrentItem[],
   proxyBaseUrl: string,
-  apiKey: string
+  apiKey: string,
 ): string {
-  const itemsXml = items.map(item => {
-    const guid = `https://www.torrentbd.net/torrents-details.php?id=${item.id}`;
-    const dlUrl = `${proxyBaseUrl}/download?id=${item.id}&apikey=${apiKey}`;
-    const peers = item.seeders + item.leechers;
+  const itemsXml = items
+    .map((item) => {
+      const guid = `https://www.torrentbd.net/torrents-details.php?id=${item.id}`;
+      const dlUrl = `${proxyBaseUrl}/download?id=${item.id}&apikey=${apiKey}`;
+      const peers = item.seeders + item.leechers;
 
-    return `    <item>
+      return `    <item>
       <title>${xmlEscape(item.title)}</title>
       <guid>${xmlEscape(guid)}</guid>
       <link>${xmlEscape(dlUrl)}</link>
@@ -88,7 +94,8 @@ export function buildSearchXml(
       <torznab:attr name="downloadvolumefactor" value="${item.freeleech ? 0 : 1}"/>
       <torznab:attr name="uploadvolumefactor" value="1"/>
     </item>`;
-  }).join("\n");
+    })
+    .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">

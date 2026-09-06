@@ -1,6 +1,10 @@
 // src/test/categories.test.ts
 import { describe, it, expect } from "bun:test";
-import { torznabCatsToGroups, tbdTitleToTorznabId, CATEGORIES } from "../categories";
+import {
+  torznabCatsToGroups,
+  tbdTitleToTorznabId,
+  CATEGORIES,
+} from "../categories";
 
 describe("torznabCatsToGroups", () => {
   it("returns [] for undefined (search all)", () => {
@@ -21,7 +25,7 @@ describe("torznabCatsToGroups", () => {
 
   it("maps multiple cats, deduplicates groups", () => {
     const groups = torznabCatsToGroups("2040,2050");
-    expect(groups.filter(g => g === "Movies").length).toBe(1);
+    expect(groups.filter((g) => g === "Movies").length).toBe(1);
   });
 
   it("maps 1000-1999 to Games", () => {

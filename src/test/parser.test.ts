@@ -64,7 +64,9 @@ describe("parseSearchResults", () => {
   });
 
   it("extracts title", () => {
-    expect(parseSearchResults(SEARCH_HTML)[0].title).toBe("End of Days 1999 720p BluRay DD5.1 x264");
+    expect(parseSearchResults(SEARCH_HTML)[0].title).toBe(
+      "End of Days 1999 720p BluRay DD5.1 x264",
+    );
   });
 
   it("maps category to torznab ID (Movies: Blu-Ray 720p → 2040)", () => {
@@ -88,7 +90,9 @@ describe("parseSearchResults", () => {
   });
 
   it("extracts download path", () => {
-    expect(parseSearchResults(SEARCH_HTML)[0].downloadPath).toContain("1279583");
+    expect(parseSearchResults(SEARCH_HTML)[0].downloadPath).toContain(
+      "1279583",
+    );
   });
 
   it("returns empty array for empty HTML", () => {

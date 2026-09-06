@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "cheerio": "^1.2.0",
+    "cloakbrowser": "^0.5.10",
     "hono": "^4.13.7",
-    "otpauth": "^9.5.2"
+    "otpauth": "^9.5.2",
+    "playwright-core": "^1.63.0"
   }
 }

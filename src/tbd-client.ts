@@ -18,15 +18,19 @@ function isLoginRedirect(html: string, finalUrl?: string): boolean {
 
 // Makes an authenticated POST to a TBD AJAX endpoint.
 // Retries once on session expiry.
-async function tbdPost(path: string, body: URLSearchParams, attempt = 0): Promise<string> {
+async function tbdPost(
+  path: string,
+  body: URLSearchParams,
+  attempt = 0,
+): Promise<string> {
   const headers = await getSessionHeaders();
   const res = await fetch(`${BASE}/${path}`, {
     method: "POST",
     headers: {
       ...headers,
       "Content-Type": "application/x-www-form-urlencoded",
-      "Referer": `${BASE}/`,
-      "Origin": BASE,
+      Referer: `${BASE}/`,
+      Origin: BASE,
     },
     body: body.toString(),
     redirect: "follow",
@@ -45,7 +49,7 @@ async function tbdPost(path: string, body: URLSearchParams, attempt = 0): Promis
 export async function searchTorrents(
   query: string,
   groups: string[],
-  page = 1
+  page = 1,
 ): Promise<string> {
   const body = new URLSearchParams({
     page: String(page),
@@ -99,7 +103,10 @@ export async function downloadTorrent(id: string): Promise<Response> {
   if (res.url.includes("account-login.php")) {
     invalidateSession();
     const headers2 = await getSessionHeaders();
-    return fetch(`${BASE}/download.php?id=${id}`, { headers: headers2, redirect: "follow" });
+    return fetch(`${BASE}/download.php?id=${id}`, {
+      headers: headers2,
+      redirect: "follow",
+    });
   }
 
   return res;

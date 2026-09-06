@@ -26,8 +26,14 @@ function parseSize(text: string): number {
   const num = parseFloat(match[1]);
   const unit = match[2].toUpperCase();
   const units: Record<string, number> = {
-    KIB: 1024, MIB: 1024 ** 2, GIB: 1024 ** 3, TIB: 1024 ** 4,
-    KB: 1000, MB: 1000 ** 2, GB: 1000 ** 3, TB: 1000 ** 4,
+    KIB: 1024,
+    MIB: 1024 ** 2,
+    GIB: 1024 ** 3,
+    TIB: 1024 ** 4,
+    KB: 1000,
+    MB: 1000 ** 2,
+    GB: 1000 ** 3,
+    TB: 1000 ** 4,
   };
   return Math.round(num * (units[unit] ?? 0));
 }
@@ -111,8 +117,10 @@ export function parseBrowseResults(html: string): TorrentItem[] {
     if (!id || !title) return;
 
     const sizeText = $row.find("td:nth-child(6)").text().trim();
-    const seeders = parseInt($row.find("td:nth-child(7)").text().trim(), 10) || 0;
-    const leechers = parseInt($row.find("td:nth-child(8)").text().trim(), 10) || 0;
+    const seeders =
+      parseInt($row.find("td:nth-child(7)").text().trim(), 10) || 0;
+    const leechers =
+      parseInt($row.find("td:nth-child(8)").text().trim(), 10) || 0;
     const grabs = parseInt($row.find("td:nth-child(9)").text().trim(), 10) || 0;
     const dateStr = $row.find(".torrent-added-on").attr("title") ?? "";
     const freeleech = $row.find('img[src*="free.gif"]').length > 0;

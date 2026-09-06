@@ -15,7 +15,7 @@ const app = new Hono();
 const XML_CT = { "Content-Type": "application/xml; charset=utf-8" };
 
 // Health check for Docker
-app.get("/health", c => c.json({ status: "ok" }));
+app.get("/health", (c) => c.json({ status: "ok" }));
 
 // API key auth middleware
 async function requireApiKey(c: Context, next: Next): Promise<Response | void> {
@@ -27,7 +27,7 @@ async function requireApiKey(c: Context, next: Next): Promise<Response | void> {
 }
 
 // Main Torznab endpoint
-app.get("/api", requireApiKey, async c => {
+app.get("/api", requireApiKey, async (c) => {
   const t = c.req.query("t");
 
   if (t === "caps") {
@@ -53,7 +53,9 @@ app.get("/api", requireApiKey, async c => {
         ? await searchTorrents(query, groups, tbdPage)
         : await browseTorrents(tbdPage);
 
-      const items = useSearch ? parseSearchResults(html) : parseBrowseResults(html);
+      const items = useSearch
+        ? parseSearchResults(html)
+        : parseBrowseResults(html);
       const proxyBase = new URL(c.req.url).origin;
       const xml = buildSearchXml(items, proxyBase, config.proxyApiKey);
 
@@ -65,11 +67,15 @@ app.get("/api", requireApiKey, async c => {
     }
   }
 
-  return c.text(buildErrorXml(202, `Unknown function: ${t ?? ""}`), 400, XML_CT);
+  return c.text(
+    buildErrorXml(202, `Unknown function: ${t ?? ""}`),
+    400,
+    XML_CT,
+  );
 });
 
 // Torrent download proxy — streams .torrent binary from TorrentBD to Prowlarr
-app.get("/download", requireApiKey, async c => {
+app.get("/download", requireApiKey, async (c) => {
   const id = c.req.query("id");
   if (!id) return c.text("Missing id", 400);
 
@@ -78,9 +84,11 @@ app.get("/download", requireApiKey, async c => {
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {
-        "Content-Type": upstream.headers.get("Content-Type") ?? "application/x-bittorrent",
-        "Content-Disposition": upstream.headers.get("Content-Disposition")
-          ?? `attachment; filename="${id}.torrent"`,
+        "Content-Type":
+          upstream.headers.get("Content-Type") ?? "application/x-bittorrent",
+        "Content-Disposition":
+          upstream.headers.get("Content-Disposition") ??
+          `attachment; filename="${id}.torrent"`,
       },
     });
   } catch (err) {
@@ -90,4 +98,9 @@ app.get("/download", requireApiKey, async c => {
 });
 
 console.log(`[torrentbd-proxy] Starting on port ${config.port}`);
-export default { port: config.port, fetch: app.fetch };
+export default {
+  port: config.port,
+  fetch: app.fetch,
+  // FlareSolverr login takes 30-60s — max Bun allows is 255s
+  idleTimeout: 255,
+};
