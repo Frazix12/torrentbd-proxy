@@ -1,0 +1,17 @@
+{
+  "name": "torrentbd",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "hono": "^4.13.7",
+    "otpauth": "^9.5.2"
+  }
+}
