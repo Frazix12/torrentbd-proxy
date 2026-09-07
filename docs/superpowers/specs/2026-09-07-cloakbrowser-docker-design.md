@@ -17,6 +17,21 @@ Docker Compose owns startup with `restart: unless-stopped`, loads secrets from
 the existing `.env`, publishes the proxy on port 5000, and mounts a named volume
 at `/data/cloak-profile`. The browser's CDP port is not published.
 
+## LAN Dashboard
+
+Serve a read-only dashboard at `/` from the existing Hono application. It shows
+container uptime, health, session state, the last successful login, the last
+error, and recent proxy and login events. A small browser script polls `/status`
+every few seconds; no frontend framework, WebSocket service, or additional
+container is needed.
+
+Keep recent events in a bounded in-memory buffer. This avoids mounting the
+Docker socket or granting the application access to the host. Logs reset when
+the process restarts, while browser authentication state remains persistent in
+the Docker volume. The dashboard is intended for the trusted LAN and has no
+separate login. Existing API-key protection for `/api` and `/download` remains
+unchanged.
+
 ## Persistent Session
 
 Use CloakBrowser's `launchPersistentContext()` with `/data/cloak-profile`.
@@ -40,6 +55,8 @@ service can remain available. Verify:
 3. A torrent download returns a valid response.
 4. Recreating the container retains the named volume and reuses the stored
    browser session.
+5. The dashboard renders, `/status` reports current state, and recent events are
+   bounded.
 
 Only after all checks pass, stop and disable the user unit
 `torrentbd-proxy.service`, remove its unit file, reload user systemd, and start
@@ -48,8 +65,9 @@ unchanged and report the failure.
 
 ## Files And Tests
 
-Change `Dockerfile`, `docker-compose.yml`, `src/session.ts`, and `README.md`.
-Add one focused session persistence test or runnable check using the smallest
-existing test pattern. Run the unit suite, type checking, Docker build, health
-check, live authenticated request checks, and restart-persistence check.
-
+Change `Dockerfile`, `docker-compose.yml`, `src/session.ts`, `src/index.ts`, and
+`README.md`. Add only the smallest status/log module needed to share state
+between the session flow and dashboard. Add focused checks for session
+persistence and bounded dashboard status using the existing test pattern. Run
+the unit suite, type checking, Docker build, health check, dashboard check, live
+authenticated request checks, and restart-persistence check.
