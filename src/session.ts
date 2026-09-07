@@ -38,7 +38,12 @@ async function doLogin(): Promise<void> {
 
   try {
     const loginUrl = `${config.tbdBaseUrl}/account-login.php?returnto=%2F`;
-    await page.goto(loginUrl, { waitUntil: "networkidle", timeout: 60000 });
+    await page.goto(loginUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+    // Wait for Cloudflare challenge resolution and form readiness
+    await page.waitForSelector("#username", { timeout: 60000 });
 
     // Phase 1: fill credentials and submit
     console.log("[session] Submitting credentials (Phase 1)...");
