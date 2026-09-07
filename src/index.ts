@@ -9,6 +9,8 @@ import { searchTorrents, browseTorrents, downloadTorrent } from "./tbd-client";
 import { parseSearchResults, parseBrowseResults } from "./parser";
 import { buildCapsXml, buildSearchXml, buildErrorXml } from "./torznab";
 import { cache } from "./cache";
+import { runtimeStatus } from "./status";
+import { renderDashboard } from "./dashboard";
 
 const app = new Hono();
 
@@ -17,11 +19,19 @@ const XML_CT = { "Content-Type": "application/xml; charset=utf-8" };
 // Health check for Docker
 app.get("/health", (c) => c.json({ status: "ok" }));
 
+// Read-only LAN dashboard and status JSON
+app.get("/", (c) => c.html(renderDashboard()));
+app.get("/status", (c) => c.json(runtimeStatus.snapshot()));
+
 // Request logging middleware
 app.use("*", async (c, next) => {
   console.log(`[req] ${c.req.method} ${c.req.url}`);
   await next();
-  console.log(`[res] ${c.req.method} ${c.req.url} -> ${c.res.status}`);
+  const logMsg = `${c.req.method} ${c.req.path} -> ${c.res.status}`;
+  console.log(`[res] ${logMsg}`);
+  if (c.req.path !== "/status" && c.req.path !== "/health") {
+    runtimeStatus.record("info", logMsg);
+  }
 });
 
 // API key auth middleware
@@ -80,6 +90,7 @@ app.get("/api", requireApiKey, async (c) => {
       return c.text(xml, 200, XML_CT);
     } catch (err) {
       console.error("[/api] Error:", err);
+      runtimeStatus.record("error", `[/api] Error: ${err}`);
       return c.text(buildErrorXml(100, String(err)), 500, XML_CT);
     }
   }
@@ -110,11 +121,13 @@ app.get("/download", requireApiKey, async (c) => {
     });
   } catch (err) {
     console.error("[/download] Error:", err);
+    runtimeStatus.record("error", `[/download] Error: ${err}`);
     return c.text(`Download failed: ${err}`, 502);
   }
 });
 
 console.log(`[torrentbd-proxy] Starting on port ${config.port}`);
+export { app };
 export default {
   port: config.port,
   fetch: app.fetch,

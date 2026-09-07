@@ -1,15 +1,91 @@
-# torrentbd
+# TorrentBD Torznab Proxy
 
-To install dependencies:
+A Dockerized Torznab proxy for TorrentBD using Bun and CloakBrowser. It handles TorrentBD login, TOTP authentication, search, torrent downloads, and persistent browser sessions.
+
+> **⚠️ Disclaimer**: This project is strictly for **educational and personal research purposes only**. The authors and contributors are **not accountable or liable** for any account bans, suspensions, warnings, IP blocks, or punitive actions taken by TorrentBD or any third parties. Use entirely at your own risk.
+
+## Setup
+
+1. Create the environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Set the required values in `.env`:
+
+   - `TBD_USERNAME`
+   - `TBD_PASSWORD`
+   - `TBD_TOTP_SECRET`
+   - `PROXY_API_KEY`
+
+3. Start the service:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+The service listens on port **6950**.
+
+## Endpoints
+
+| Endpoint | Purpose |
+| --- | --- |
+| `http://<host>:6950/` | Read-only status dashboard |
+| `http://<host>:6950/status` | Runtime status JSON |
+| `http://<host>:6950/health` | Container health check |
+| `http://<host>:6950/api?t=caps&apikey=<key>` | Torznab capabilities |
+| `http://<host>:6950/api?t=search&q=<query>&apikey=<key>` | Torrent search |
+| `http://<host>:6950/download?id=<id>&apikey=<key>` | Torrent download |
+
+## Prowlarr
+
+Add a **Generic Torznab** indexer with:
+
+- URL: `http://<host>:6950`
+- API key: the `PROXY_API_KEY` value from `.env`
+
+## Persistence
+
+The `cloak-profile` Docker volume stores browser cookies and session state. Normal container recreation preserves the authenticated session:
 
 ```bash
-bun install
+docker compose down
+docker compose up -d
 ```
 
-To run:
+Do not run `docker compose down -v` unless you intend to erase the browser profile and force a new login.
+
+## Operations
 
 ```bash
-bun run index.ts
+# Follow logs
+docker compose logs -f
+
+# Check service state
+docker compose ps
+
+# Restart
+docker compose restart
+
+# Stop
+docker compose down
 ```
 
-This project was created using `bun init` in bun v1.3.14. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+If a fresh profile remains on a Cloudflare challenge, set a current `CLOAKBROWSER_LICENSE_KEY` in `.env` and rebuild. The bundled unlicensed browser is an older release.
+
+## Development Checks
+
+```bash
+bun test
+bunx tsc --noEmit
+docker compose config --quiet
+```
+
+## License & Fair Use
+
+This software is released under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](LICENSE) license.
+
+- **Free for Personal & Educational Use**: You are free to run, modify, and learn from this project.
+- **No Commercial Use**: Any commercial use, monetization, or paid distribution is strictly prohibited.
+- **ShareAlike / Open Source for Forks**: Any forks, derivatives, or redistributions must remain open source under the exact same license terms.

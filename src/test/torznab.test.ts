@@ -60,7 +60,9 @@ describe("buildSearchXml", () => {
 
   it("includes enclosure tag with torrent type", () => {
     const xml = buildSearchXml([SAMPLE_ITEM], "http://proxy:5000", "key");
-    expect(xml).toContain('<enclosure url="http://proxy:5000/download?id=1279583&amp;apikey=key" length="9481369067" type="application/x-bittorrent"/>');
+    expect(xml).toContain(
+      '<enclosure url="http://proxy:5000/download?id=1279583&amp;apikey=key" length="9481369067" type="application/x-bittorrent"/>',
+    );
   });
 
   it("includes size in bytes", () => {

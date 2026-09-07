@@ -2,8 +2,20 @@ services:
   torrentbd-proxy:
     build: .
     ports:
-      - "5000:5000"
+      - "6950:6950"
     env_file: .env
     environment:
-      - PORT=5000
+      - PORT=6950
+      - CLOAK_PROFILE_DIR=/data/cloak-profile
+    volumes:
+      - cloak-profile:/data/cloak-profile
+    shm_size: 2gb
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6950/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  cloak-profile:
