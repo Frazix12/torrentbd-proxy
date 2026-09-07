@@ -44,6 +44,17 @@ async function doLogin(): Promise<void> {
     });
     // Wait for Cloudflare challenge resolution and form readiness
     await page.waitForSelector("#username", { timeout: 60000 });
+    // Ensure Google reCAPTCHA v3 script is loaded and ready
+    await page.waitForFunction(
+      () => {
+        // SAFETY: grecaptcha is dynamically injected on window by Google reCAPTCHA script
+        const win = window as unknown as {
+          grecaptcha?: { execute?: () => void };
+        };
+        return typeof win.grecaptcha?.execute === "function";
+      },
+      { timeout: 30000 },
+    );
 
     // Phase 1: fill credentials and submit
     console.log("[session] Submitting credentials (Phase 1)...");

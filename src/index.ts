@@ -17,6 +17,13 @@ const XML_CT = { "Content-Type": "application/xml; charset=utf-8" };
 // Health check for Docker
 app.get("/health", (c) => c.json({ status: "ok" }));
 
+// Request logging middleware
+app.use("*", async (c, next) => {
+  console.log(`[req] ${c.req.method} ${c.req.url}`);
+  await next();
+  console.log(`[res] ${c.req.method} ${c.req.url} -> ${c.res.status}`);
+});
+
 // API key auth middleware
 async function requireApiKey(c: Context, next: Next): Promise<Response | void> {
   const key = c.req.query("apikey");
@@ -42,7 +49,18 @@ app.get("/api", requireApiKey, async (c) => {
     const offset = parseInt(c.req.query("offset") ?? "0", 10);
     const tbdPage = Math.floor(offset / 100) + 1;
 
-    const cacheKey = `${query}|${cats ?? ""}|${tbdPage}`;
+    let host = c.req.header("host");
+    if (!host) {
+      try {
+        host = new URL(c.req.url).host;
+      } catch {
+        host = `localhost:${config.port}`;
+      }
+    }
+    const proto = c.req.header("x-forwarded-proto") ?? "http";
+    const proxyBase = `${proto}://${host}`;
+
+    const cacheKey = `${proxyBase}|${query}|${cats ?? ""}|${tbdPage}`;
     const cached = cache.get(cacheKey);
     if (cached) return c.text(cached, 200, XML_CT);
 
@@ -56,7 +74,6 @@ app.get("/api", requireApiKey, async (c) => {
       const items = useSearch
         ? parseSearchResults(html)
         : parseBrowseResults(html);
-      const proxyBase = new URL(c.req.url).origin;
       const xml = buildSearchXml(items, proxyBase, config.proxyApiKey);
 
       cache.set(cacheKey, xml);

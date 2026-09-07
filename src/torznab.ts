@@ -85,7 +85,10 @@ export function buildSearchXml(
       <title>${xmlEscape(item.title)}</title>
       <guid>${xmlEscape(guid)}</guid>
       <link>${xmlEscape(dlUrl)}</link>
+      <comments>${xmlEscape(guid)}</comments>
       <pubDate>${toRfc2822(item.publishDate)}</pubDate>
+      <size>${item.sizeBytes}</size>
+      <enclosure url="${xmlEscape(dlUrl)}" length="${item.sizeBytes}" type="application/x-bittorrent"/>
       <torznab:attr name="category" value="${item.torznabCategoryId}"/>
       <torznab:attr name="size" value="${item.sizeBytes}"/>
       <torznab:attr name="seeders" value="${item.seeders}"/>
