@@ -10,6 +10,8 @@ function required(name: string): string {
 
 export const DEFAULT_PORT = 6950;
 
+const cloakProfileDir = process.env.CLOAK_PROFILE_DIR ?? "/data/cloak-profile";
+
 export const config = {
   tbdUsername: required("TBD_USERNAME"),
   tbdPassword: required("TBD_PASSWORD"),
@@ -18,5 +20,10 @@ export const config = {
   proxyApiKey: required("PROXY_API_KEY"),
   cacheTtlSeconds: Number(process.env.CACHE_TTL_SECONDS ?? "300"),
   port: Number(process.env.PORT ?? DEFAULT_PORT),
-  cloakProfileDir: process.env.CLOAK_PROFILE_DIR ?? "/data/cloak-profile",
+  cloakProfileDir,
+  reseedDbPath:
+    process.env.RESEED_DB_PATH ??
+    (process.env.NODE_ENV === "test"
+      ? ":memory:"
+      : `${cloakProfileDir}/reseed.sqlite`),
 };
