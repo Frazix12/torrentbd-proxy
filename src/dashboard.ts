@@ -91,7 +91,10 @@ export function renderDashboard(): string {
   <div class="container">
     <header>
       <h1>TorrentBD Proxy</h1>
-      <div id="statusBadge" class="status-badge">Checking...</div>
+      <div style="display: flex; gap: 16px; align-items: center;">
+        <a href="/reseed" style="color: var(--accent); text-decoration: none; font-size: 14px; font-weight: 500;">Reseed Requests</a>
+        <div id="statusBadge" class="status-badge">Checking...</div>
+      </div>
     </header>
 
     <div class="grid">

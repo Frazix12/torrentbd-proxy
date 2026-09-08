@@ -10,6 +10,7 @@ describe("dashboard", () => {
     expect(html).toContain("TorrentBD Proxy");
     expect(html).toContain('fetch("/status")');
     expect(html).toContain("Recent events");
+    expect(html).toContain('href="/reseed"');
   });
 
   it("serves HTML at / and JSON at /status without external services", async () => {
