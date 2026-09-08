@@ -5,16 +5,29 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { config } from "./config";
 import { torznabCatsToGroups } from "./categories";
-import { searchTorrents, browseTorrents, downloadTorrent } from "./tbd-client";
+import { searchTorrents, browseTorrents, downloadTorrent, fetchReseedPage } from "./tbd-client";
 import { parseSearchResults, parseBrowseResults } from "./parser";
+import { parseReseedPage } from "./reseed-parser";
+import { createReseedStore } from "./reseed-store";
+import { createReseedSynchronizer } from "./reseed-sync";
 import { buildCapsXml, buildSearchXml, buildErrorXml } from "./torznab";
 import { cache } from "./cache";
 import { runtimeStatus } from "./status";
 import { renderDashboard } from "./dashboard";
+import { renderReseedDashboard } from "./reseed-dashboard";
 
 const app = new Hono();
 
 const XML_CT = { "Content-Type": "application/xml; charset=utf-8" };
+
+const reseedStore = createReseedStore(config.reseedDbPath);
+const reseedSynchronizer = createReseedSynchronizer({
+  baseUrl: config.tbdBaseUrl,
+  fetchPage: fetchReseedPage,
+  parsePage: parseReseedPage,
+  store: reseedStore,
+  record: (level, msg) => runtimeStatus.record(level, msg),
+});
 
 // Health check for Docker
 app.get("/health", (c) => c.json({ status: "ok" }));
@@ -22,6 +35,68 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 // Read-only LAN dashboard and status JSON
 app.get("/", (c) => c.html(renderDashboard()));
 app.get("/status", (c) => c.json(runtimeStatus.snapshot()));
+
+// Reseed dashboard routes (open LAN access)
+app.get("/reseed", (c) => c.html(renderReseedDashboard()));
+
+app.get("/reseed-ui.js", () => {
+  return new Response(Bun.file(new URL("./reseed-ui.js", import.meta.url)), {
+    headers: {
+      "Content-Type": "text/javascript; charset=utf-8",
+    },
+  });
+});
+
+app.get("/reseed-data", (c) => {
+  const requests = reseedStore.list();
+  const count = requests.length;
+  const totalSeedBonus = requests.reduce(
+    (sum, r) => sum + (r.seedBonus ?? 0),
+    0,
+  );
+  const sync = reseedStore.metadata();
+  return c.json({ requests, count, totalSeedBonus, sync });
+});
+
+app.post("/reseed-refresh", (c) => {
+  const started = reseedSynchronizer.start();
+  const status = started ? 202 : 200;
+  return c.json({ started, sync: reseedStore.metadata() }, status);
+});
+
+// Shared torrent download handler for proxy and reseed download routes
+async function torrentDownloadResponse(
+  id: string,
+  downloader: typeof downloadTorrent = downloadTorrent,
+): Promise<Response> {
+  try {
+    const upstream = await downloader(id);
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("Content-Type") ?? "application/x-bittorrent",
+        "Content-Disposition":
+          upstream.headers.get("Content-Disposition") ??
+          `attachment; filename="${id}.torrent"`,
+      },
+    });
+  } catch (err) {
+    console.error("[download] Error:", err);
+    runtimeStatus.record("error", `[download] Error: ${err}`);
+    return new Response(`Download failed: ${err}`, { status: 502 });
+  }
+}
+
+// Torrent download proxy for reseed requests (open LAN access)
+app.get("/reseed-download", async (c) => {
+  const id = c.req.query("id");
+  if (!id || !/^\d+$/.test(id)) {
+    return c.text("Invalid or missing id", 400);
+  }
+
+  return torrentDownloadResponse(id);
+});
 
 // Request logging middleware
 app.use("*", async (c, next) => {
@@ -107,27 +182,16 @@ app.get("/download", requireApiKey, async (c) => {
   const id = c.req.query("id");
   if (!id) return c.text("Missing id", 400);
 
-  try {
-    const upstream = await downloadTorrent(id);
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        "Content-Type":
-          upstream.headers.get("Content-Type") ?? "application/x-bittorrent",
-        "Content-Disposition":
-          upstream.headers.get("Content-Disposition") ??
-          `attachment; filename="${id}.torrent"`,
-      },
-    });
-  } catch (err) {
-    console.error("[/download] Error:", err);
-    runtimeStatus.record("error", `[/download] Error: ${err}`);
-    return c.text(`Download failed: ${err}`, 502);
-  }
+  return torrentDownloadResponse(id);
 });
 
 console.log(`[torrentbd-proxy] Starting on port ${config.port}`);
-export { app };
+
+if (process.env.NODE_ENV !== "test") {
+  reseedSynchronizer.startPolling(300_000);
+}
+
+export { app, torrentDownloadResponse, reseedStore, reseedSynchronizer };
 export default {
   port: config.port,
   fetch: app.fetch,
