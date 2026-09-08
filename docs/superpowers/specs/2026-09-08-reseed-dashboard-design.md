@@ -18,7 +18,7 @@ The page remains read-only and has the same open LAN access as the existing stat
 - A manual refresh action
 - Search, filters, and sortable columns
 - Links from the main dashboard to the reseed page
-- Download through the existing proxy and direct links to TorrentBD details
+- Download through a dashboard-safe proxy route and direct links to TorrentBD details
 - Sync state and failures in the dashboard and existing runtime event log
 - Focused parser, synchronization, storage, and dashboard tests
 
@@ -110,6 +110,10 @@ Returns:
 
 Scraped text is returned as JSON data and inserted into the page using safe DOM text operations, not unescaped HTML interpolation.
 
+### `GET /reseed-download?id=<torrent-id>`
+
+Streams the torrent through the existing authenticated download client. This LAN-dashboard route avoids exposing `PROXY_API_KEY` in page HTML, browser history, or request logs.
+
 ### `POST /reseed-refresh`
 
 Starts an immediate synchronization. The endpoint reports whether a new sync started or one was already running. It does not wait for the entire upstream scrape before responding.
@@ -131,7 +135,7 @@ The main dashboard gains a **Reseed Requests** navigation link. The separate pag
 - Request date or age filter
 - Sortable data columns
 - Clear-all-filters control
-- Per-row **Download torrent** action through `/download`
+- Per-row **Download torrent** action through `/reseed-download?id=<torrent-id>`
 - Per-row **Open on TorrentBD** link
 
 Filtering and sorting combine predictably: all active filters use AND semantics, text search matches any searchable field, and changing filters does not trigger upstream traffic. The page periodically reloads `/reseed-data` so a completed background sync appears without a full-page reload.
@@ -144,6 +148,7 @@ The table supports horizontal scrolling on narrow screens rather than hiding req
 - Authentication cookies and credentials never enter dashboard responses or logs.
 - Upstream text is rendered with text-safe DOM APIs.
 - Only validated numeric torrent IDs can produce download or original-detail links.
+- The proxy API key is never embedded in dashboard HTML, JSON, links, or browser history.
 - Pagination links must remain on the configured TorrentBD origin.
 - Manual refresh is concurrency guarded to prevent request amplification.
 - Errors are explicit and preserve the last known-good data.
