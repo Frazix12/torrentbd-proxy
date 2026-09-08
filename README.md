@@ -34,6 +34,10 @@ The service listens on port **6950**.
 | `http://<host>:6950/` | Read-only status dashboard |
 | `http://<host>:6950/status` | Runtime status JSON |
 | `http://<host>:6950/health` | Container health check |
+| `http://<host>:6950/reseed` | Reseed requests dashboard |
+| `http://<host>:6950/reseed-data` | Reseed snapshot data JSON |
+| `http://<host>:6950/reseed-refresh` | Trigger on-demand reseed synchronization |
+| `http://<host>:6950/reseed-download?id=<id>` | Proxied torrent download for reseed requests |
 | `http://<host>:6950/api?t=caps&apikey=<key>` | Torznab capabilities |
 | `http://<host>:6950/api?t=search&q=<query>&apikey=<key>` | Torrent search |
 | `http://<host>:6950/download?id=<id>&apikey=<key>` | Torrent download |
@@ -47,7 +51,7 @@ Add a **Generic Torznab** indexer with:
 
 ## Persistence
 
-The `cloak-profile` Docker volume stores browser cookies and session state. Normal container recreation preserves the authenticated session:
+The `cloak-profile` Docker volume stores browser cookies and session state as well as the SQLite database for reseed requests (`/data/cloak-profile/reseed.sqlite`). Normal container recreation preserves both the authenticated session and cached reseed data:
 
 ```bash
 docker compose down
@@ -55,6 +59,16 @@ docker compose up -d
 ```
 
 Do not run `docker compose down -v` unless you intend to erase the browser profile and force a new login.
+
+## Reseed Requests
+
+The proxy features an authenticated background synchronizer and a dedicated LAN dashboard for TorrentBD reseed requests:
+
+- **Synchronization**: Automatically syncs upon proxy startup and repeats every 5 minutes (`300,000 ms`). Manual on-demand sync can be triggered from the dashboard or via `POST /reseed-refresh`. Concurrency guards prevent overlapping sync operations.
+- **Multi-Page Scraping & Atomic Deletion**: Traverses all pagination pages to collect active requests. If all pages parse successfully, the snapshot is updated in a single atomic SQLite transaction. Requests that have disappeared upstream are immediately deleted.
+- **Last-Good Snapshot**: If synchronization fails mid-process (e.g. network interruption, Cloudflare challenge, or upstream error), the previous snapshot is retained untouched. The failure status and error details are tracked and shown on the dashboard.
+- **Local SQLite Persistence**: Reseed requests and sync metadata are persisted locally using Bun's native SQLite (`bun:sqlite`). By default, the database is stored at `/data/cloak-profile/reseed.sqlite` within the persistent `cloak-profile` Docker volume, configurable via `RESEED_DB_PATH`.
+- **LAN Dashboard & Secure Download**: The `/reseed` page provides responsive, client-side search and filtering (by category, bonus, size, requester, date range, and text search) with sortable columns. Torrent downloads use `/reseed-download?id=<id>`, allowing downloads on the local network without exposing the proxy API key.
 
 ## Operations
 
