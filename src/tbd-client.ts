@@ -111,3 +111,33 @@ export async function downloadTorrent(id: string): Promise<Response> {
 
   return res;
 }
+
+export async function fetchReseedPage(
+  url = `${BASE}/reseed-requests.php`,
+  attempt = 0,
+): Promise<string> {
+  const target = new URL(url, BASE);
+  if (
+    target.origin !== new URL(BASE).origin ||
+    target.pathname !== "/reseed-requests.php"
+  ) {
+    throw new Error("Invalid reseed page URL");
+  }
+
+  const headers = await getSessionHeaders();
+  const response = await fetch(target.href, {
+    method: "GET",
+    headers: { ...headers, Referer: `${BASE}/reseed-requests.php` },
+    redirect: "follow",
+  });
+  const html = await response.text();
+
+  if (isLoginRedirect(html, response.url) && attempt === 0) {
+    invalidateSession();
+    return fetchReseedPage(target.href, 1);
+  }
+  if (!response.ok || isLoginRedirect(html, response.url)) {
+    throw new Error(`Reseed page failed: HTTP ${response.status}`);
+  }
+  return html;
+}
