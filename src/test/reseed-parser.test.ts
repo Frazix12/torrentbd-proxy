@@ -33,8 +33,7 @@ describe("parseReseedPage", () => {
         seeders: 0,
         leechers: 3,
         requestedAt: "2026-09-07",
-        detailsUrl:
-          "https://www.torrentbd.net/torrents-details.php?id=42",
+        detailsUrl: "https://www.torrentbd.net/torrents-details.php?id=42",
         details: { Reason: "Please reseed" },
       }),
     ]);
@@ -69,9 +68,9 @@ describe("parseReseedPage", () => {
       "/reseed-requests.php?page=2",
       "https://evil.example/page=2",
     );
-    expect(() =>
-      parseReseedPage(html, "https://www.torrentbd.net"),
-    ).toThrow("pagination origin");
+    expect(() => parseReseedPage(html, "https://www.torrentbd.net")).toThrow(
+      "pagination origin",
+    );
   });
 
   it("uses the requested cell title and recognizes header aliases", () => {
@@ -83,10 +82,8 @@ describe("parseReseedPage", () => {
           <td>250</td><td>Bob</td><td><span title="2026-09-01 09:30 PM">7d ago</span></td>
         </tr>
       </table>`;
-    const request = parseReseedPage(
-      html,
-      "https://www.torrentbd.net",
-    ).requests[0];
+    const request = parseReseedPage(html, "https://www.torrentbd.net")
+      .requests[0];
     expect(request).toEqual(
       expect.objectContaining({
         torrentId: "99",
@@ -106,11 +103,42 @@ describe("parseReseedPage", () => {
     );
   });
 
+  it("skips unrelated textual next links before reseed pagination", () => {
+    const html = page
+      .replace('rel="next" ', "")
+      .replace(
+        '<a href="/reseed-requests.php?page=2">Next</a>',
+        '<a href="/help">Next</a><a href="/reseed-requests.php?page=2">Next</a>',
+      );
+    expect(parseReseedPage(html, "https://www.torrentbd.net").nextUrl).toBe(
+      "https://www.torrentbd.net/reseed-requests.php?page=2",
+    );
+  });
+
+  it("rejects a cross-origin textual reseed next link", () => {
+    const html = page
+      .replace('rel="next" ', "")
+      .replace(
+        "/reseed-requests.php?page=2",
+        "https://evil.example/reseed-requests.php?page=2",
+      );
+    expect(() => parseReseedPage(html, "https://www.torrentbd.net")).toThrow(
+      "pagination origin",
+    );
+  });
+
+  it("allows login URL references on a recognized reseed page", () => {
+    const html = `${page}<a href="/account-login.php">Sign in elsewhere</a>`;
+    expect(
+      parseReseedPage(html, "https://www.torrentbd.net").requests,
+    ).toHaveLength(1);
+  });
+
   it("rejects a data row without a numeric torrent id", () => {
     const html = page.replace("?id=42", "?id=invalid");
-    expect(() =>
-      parseReseedPage(html, "https://www.torrentbd.net"),
-    ).toThrow("numeric torrent ID");
+    expect(() => parseReseedPage(html, "https://www.torrentbd.net")).toThrow(
+      "numeric torrent ID",
+    );
   });
 
   it("rejects torrent details links outside the configured origin", () => {
@@ -118,8 +146,8 @@ describe("parseReseedPage", () => {
       "/torrents-details.php?id=42",
       "https://evil.example/torrents-details.php?id=42",
     );
-    expect(() =>
-      parseReseedPage(html, "https://www.torrentbd.net"),
-    ).toThrow("details origin");
+    expect(() => parseReseedPage(html, "https://www.torrentbd.net")).toThrow(
+      "details origin",
+    );
   });
 });

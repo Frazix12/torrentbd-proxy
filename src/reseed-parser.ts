@@ -101,16 +101,31 @@ function resolvePaginationUrl(
   return target.href;
 }
 
+function hasReseedPaginationPath(href: string, baseUrl: URL): boolean {
+  try {
+    return new URL(href, baseUrl).pathname === "/reseed-requests.php";
+  } catch {
+    return false;
+  }
+}
+
 export function parseReseedPage(
   html: string,
   baseUrl: string,
 ): ParsedReseedPage {
-  if (html.includes("account-login.php") || html.includes("takelogin.php")) {
-    throw new Error("Reseed page is a login response");
-  }
-
   const origin = new URL(baseUrl);
   const $ = cheerio.load(html);
+  const hasLoginForm = $("form[action]")
+    .toArray()
+    .some((form) => {
+      const action = $(form).attr("action")?.toLocaleLowerCase() ?? "";
+      return (
+        action.includes("account-login.php") || action.includes("takelogin.php")
+      );
+    });
+  if (hasLoginForm) {
+    throw new Error("Reseed page is a login response");
+  }
   const readHeaders = (element: Parameters<typeof $>[0]) =>
     $(element)
       .find("tr")
@@ -234,7 +249,7 @@ export function parseReseedPage(
     $("a[href]").each((_, link) => {
       if (nextHref || normalizeHeader($(link).text()) !== "next") return;
       const href = $(link).attr("href");
-      if (href) nextHref = href;
+      if (href && hasReseedPaginationPath(href, origin)) nextHref = href;
     });
   }
 
