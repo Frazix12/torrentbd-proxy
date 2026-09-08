@@ -5,23 +5,29 @@ import { Hono } from "hono";
 import type { Context, Next } from "hono";
 import { config } from "./config";
 import { torznabCatsToGroups } from "./categories";
-import { searchTorrents, browseTorrents, downloadTorrent, fetchReseedPage } from "./tbd-client";
+import {
+  searchTorrents,
+  browseTorrents,
+  downloadTorrent,
+  fetchReseedPage,
+} from "./tbd-client";
 import { parseSearchResults, parseBrowseResults } from "./parser";
 import { parseReseedPage } from "./reseed-parser";
-import { createReseedStore } from "./reseed-store";
-import { createReseedSynchronizer } from "./reseed-sync";
+import { createReseedStore, type ReseedStore } from "./reseed-store";
+import {
+  createReseedSynchronizer,
+  type ReseedSynchronizer,
+} from "./reseed-sync";
 import { buildCapsXml, buildSearchXml, buildErrorXml } from "./torznab";
 import { cache } from "./cache";
 import { runtimeStatus } from "./status";
 import { renderDashboard } from "./dashboard";
 import { renderReseedDashboard } from "./reseed-dashboard";
 
-const app = new Hono();
-
 const XML_CT = { "Content-Type": "application/xml; charset=utf-8" };
 
-const reseedStore = createReseedStore(config.reseedDbPath);
-const reseedSynchronizer = createReseedSynchronizer({
+let reseedStore = createReseedStore(config.reseedDbPath);
+let reseedSynchronizer = createReseedSynchronizer({
   baseUrl: config.tbdBaseUrl,
   fetchPage: fetchReseedPage,
   parsePage: parseReseedPage,
@@ -29,40 +35,13 @@ const reseedSynchronizer = createReseedSynchronizer({
   record: (level, msg) => runtimeStatus.record(level, msg),
 });
 
-// Health check for Docker
-app.get("/health", (c) => c.json({ status: "ok" }));
+function setReseedSynchronizer(sync: ReseedSynchronizer): void {
+  reseedSynchronizer = sync;
+}
 
-// Read-only LAN dashboard and status JSON
-app.get("/", (c) => c.html(renderDashboard()));
-app.get("/status", (c) => c.json(runtimeStatus.snapshot()));
-
-// Reseed dashboard routes (open LAN access)
-app.get("/reseed", (c) => c.html(renderReseedDashboard()));
-
-app.get("/reseed-ui.js", () => {
-  return new Response(Bun.file(new URL("./reseed-ui.js", import.meta.url)), {
-    headers: {
-      "Content-Type": "text/javascript; charset=utf-8",
-    },
-  });
-});
-
-app.get("/reseed-data", (c) => {
-  const requests = reseedStore.list();
-  const count = requests.length;
-  const totalSeedBonus = requests.reduce(
-    (sum, r) => sum + (r.seedBonus ?? 0),
-    0,
-  );
-  const sync = reseedStore.metadata();
-  return c.json({ requests, count, totalSeedBonus, sync });
-});
-
-app.post("/reseed-refresh", (c) => {
-  const started = reseedSynchronizer.start();
-  const status = started ? 202 : 200;
-  return c.json({ started, sync: reseedStore.metadata() }, status);
-});
+function setReseedStore(store: ReseedStore): void {
+  reseedStore = store;
+}
 
 // Shared torrent download handler for proxy and reseed download routes
 async function torrentDownloadResponse(
@@ -88,102 +67,158 @@ async function torrentDownloadResponse(
   }
 }
 
-// Torrent download proxy for reseed requests (open LAN access)
-app.get("/reseed-download", async (c) => {
-  const id = c.req.query("id");
-  if (!id || !/^\d+$/.test(id)) {
-    return c.text("Invalid or missing id", 400);
-  }
-
-  return torrentDownloadResponse(id);
-});
-
-// Request logging middleware
-app.use("*", async (c, next) => {
-  console.log(`[req] ${c.req.method} ${c.req.url}`);
-  await next();
-  const logMsg = `${c.req.method} ${c.req.path} -> ${c.res.status}`;
-  console.log(`[res] ${logMsg}`);
-  if (c.req.path !== "/status" && c.req.path !== "/health") {
-    runtimeStatus.record("info", logMsg);
-  }
-});
-
-// API key auth middleware
-async function requireApiKey(c: Context, next: Next): Promise<Response | void> {
-  const key = c.req.query("apikey");
-  if (key !== config.proxyApiKey) {
-    return c.text("Forbidden: invalid apikey", 403);
-  }
-  return next();
+export interface AppDeps {
+  reseedStore?: ReseedStore;
+  reseedSynchronizer?: ReseedSynchronizer;
+  downloader?: typeof downloadTorrent;
 }
 
-// Main Torznab endpoint
-app.get("/api", requireApiKey, async (c) => {
-  const t = c.req.query("t");
+function createApp(deps?: AppDeps): Hono {
+  const app = new Hono();
 
-  if (t === "caps") {
-    return c.text(buildCapsXml(), 200, XML_CT);
+  const getStore = () => deps?.reseedStore ?? reseedStore;
+  const getSynchronizer = () => deps?.reseedSynchronizer ?? reseedSynchronizer;
+  const getDownloader = () => deps?.downloader ?? downloadTorrent;
+
+  // Health check for Docker
+  app.get("/health", (c) => c.json({ status: "ok" }));
+
+  // Read-only LAN dashboard and status JSON
+  app.get("/", (c) => c.html(renderDashboard()));
+  app.get("/status", (c) => c.json(runtimeStatus.snapshot()));
+
+  // Reseed dashboard routes (open LAN access)
+  app.get("/reseed", (c) => c.html(renderReseedDashboard()));
+
+  app.get("/reseed-ui.js", () => {
+    return new Response(Bun.file(new URL("./reseed-ui.js", import.meta.url)), {
+      headers: {
+        "Content-Type": "text/javascript; charset=utf-8",
+      },
+    });
+  });
+
+  app.get("/reseed-data", (c) => {
+    const store = getStore();
+    const requests = store.list();
+    const count = requests.length;
+    const totalSeedBonus = requests.reduce(
+      (sum, r) => sum + (r.seedBonus ?? 0),
+      0,
+    );
+    const sync = store.metadata();
+    return c.json({ requests, count, totalSeedBonus, sync });
+  });
+
+  app.post("/reseed-refresh", (c) => {
+    const synchronizer = getSynchronizer();
+    const store = getStore();
+    const started = synchronizer.start();
+    const status = started ? 202 : 200;
+    return c.json({ started, sync: store.metadata() }, status);
+  });
+
+  // Torrent download proxy for reseed requests (open LAN access)
+  app.get("/reseed-download", async (c) => {
+    const id = c.req.query("id");
+    if (!id || !/^\d+$/.test(id)) {
+      return c.text("Invalid or missing id", 400);
+    }
+
+    return torrentDownloadResponse(id, getDownloader());
+  });
+
+  // Request logging middleware
+  app.use("*", async (c, next) => {
+    console.log(`[req] ${c.req.method} ${c.req.url}`);
+    await next();
+    const logMsg = `${c.req.method} ${c.req.path} -> ${c.res.status}`;
+    console.log(`[res] ${logMsg}`);
+    if (c.req.path !== "/status" && c.req.path !== "/health") {
+      runtimeStatus.record("info", logMsg);
+    }
+  });
+
+  // API key auth middleware
+  async function requireApiKey(c: Context, next: Next): Promise<Response | void> {
+    const key = c.req.query("apikey");
+    if (key !== config.proxyApiKey) {
+      return c.text("Forbidden: invalid apikey", 403);
+    }
+    return next();
   }
 
-  const SEARCH_TYPES = ["search", "tvsearch", "movie", "music", "book"];
-  if (t && SEARCH_TYPES.includes(t)) {
-    const query = c.req.query("q") ?? "";
-    const cats = c.req.query("cat");
-    // Torznab offset is 0-based per 100 items; TBD page is 1-based
-    const offset = parseInt(c.req.query("offset") ?? "0", 10);
-    const tbdPage = Math.floor(offset / 100) + 1;
+  // Main Torznab endpoint
+  app.get("/api", requireApiKey, async (c) => {
+    const t = c.req.query("t");
 
-    let host = c.req.header("host");
-    if (!host) {
+    if (t === "caps") {
+      return c.text(buildCapsXml(), 200, XML_CT);
+    }
+
+    const SEARCH_TYPES = ["search", "tvsearch", "movie", "music", "book"];
+    if (t && SEARCH_TYPES.includes(t)) {
+      const query = c.req.query("q") ?? "";
+      const cats = c.req.query("cat");
+      // Torznab offset is 0-based per 100 items; TBD page is 1-based
+      const offset = parseInt(c.req.query("offset") ?? "0", 10);
+      const tbdPage = Math.floor(offset / 100) + 1;
+
+      let host = c.req.header("host");
+      if (!host) {
+        try {
+          host = new URL(c.req.url).host;
+        } catch {
+          host = `localhost:${config.port}`;
+        }
+      }
+      const proto = c.req.header("x-forwarded-proto") ?? "http";
+      const proxyBase = `${proto}://${host}`;
+
+      const cacheKey = `${proxyBase}|${query}|${cats ?? ""}|${tbdPage}`;
+      const cached = cache.get(cacheKey);
+      if (cached) return c.text(cached, 200, XML_CT);
+
       try {
-        host = new URL(c.req.url).host;
-      } catch {
-        host = `localhost:${config.port}`;
+        const groups = torznabCatsToGroups(cats);
+        const useSearch = query || groups.length > 0;
+        const html = useSearch
+          ? await searchTorrents(query, groups, tbdPage)
+          : await browseTorrents(tbdPage);
+
+        const items = useSearch
+          ? parseSearchResults(html)
+          : parseBrowseResults(html);
+        const xml = buildSearchXml(items, proxyBase, config.proxyApiKey);
+
+        cache.set(cacheKey, xml);
+        return c.text(xml, 200, XML_CT);
+      } catch (err) {
+        console.error("[/api] Error:", err);
+        runtimeStatus.record("error", `[/api] Error: ${err}`);
+        return c.text(buildErrorXml(100, String(err)), 500, XML_CT);
       }
     }
-    const proto = c.req.header("x-forwarded-proto") ?? "http";
-    const proxyBase = `${proto}://${host}`;
 
-    const cacheKey = `${proxyBase}|${query}|${cats ?? ""}|${tbdPage}`;
-    const cached = cache.get(cacheKey);
-    if (cached) return c.text(cached, 200, XML_CT);
+    return c.text(
+      buildErrorXml(202, `Unknown function: ${t ?? ""}`),
+      400,
+      XML_CT,
+    );
+  });
 
-    try {
-      const groups = torznabCatsToGroups(cats);
-      const useSearch = query || groups.length > 0;
-      const html = useSearch
-        ? await searchTorrents(query, groups, tbdPage)
-        : await browseTorrents(tbdPage);
+  // Torrent download proxy — streams .torrent binary from TorrentBD to Prowlarr
+  app.get("/download", requireApiKey, async (c) => {
+    const id = c.req.query("id");
+    if (!id) return c.text("Missing id", 400);
 
-      const items = useSearch
-        ? parseSearchResults(html)
-        : parseBrowseResults(html);
-      const xml = buildSearchXml(items, proxyBase, config.proxyApiKey);
+    return torrentDownloadResponse(id, getDownloader());
+  });
 
-      cache.set(cacheKey, xml);
-      return c.text(xml, 200, XML_CT);
-    } catch (err) {
-      console.error("[/api] Error:", err);
-      runtimeStatus.record("error", `[/api] Error: ${err}`);
-      return c.text(buildErrorXml(100, String(err)), 500, XML_CT);
-    }
-  }
+  return app;
+}
 
-  return c.text(
-    buildErrorXml(202, `Unknown function: ${t ?? ""}`),
-    400,
-    XML_CT,
-  );
-});
-
-// Torrent download proxy — streams .torrent binary from TorrentBD to Prowlarr
-app.get("/download", requireApiKey, async (c) => {
-  const id = c.req.query("id");
-  if (!id) return c.text("Missing id", 400);
-
-  return torrentDownloadResponse(id);
-});
+const app = createApp();
 
 console.log(`[torrentbd-proxy] Starting on port ${config.port}`);
 
@@ -191,7 +226,15 @@ if (process.env.NODE_ENV !== "test") {
   reseedSynchronizer.startPolling(300_000);
 }
 
-export { app, torrentDownloadResponse, reseedStore, reseedSynchronizer };
+export {
+  app,
+  createApp,
+  setReseedSynchronizer,
+  setReseedStore,
+  torrentDownloadResponse,
+  reseedStore,
+  reseedSynchronizer,
+};
 export default {
   port: config.port,
   fetch: app.fetch,
