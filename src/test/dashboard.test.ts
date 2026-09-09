@@ -10,6 +10,8 @@ describe("dashboard", () => {
     expect(html).toContain("TorrentBD Proxy");
     expect(html).toContain('fetch("/status")');
     expect(html).toContain("Recent events");
+    expect(html).toContain("Feature Health");
+    expect(html).toContain("Run Tests Now");
   });
 
   it("serves HTML at / and JSON at /status without external services", async () => {
@@ -25,9 +27,12 @@ describe("dashboard", () => {
       uptimeSeconds: number;
       sessionState: string;
       events: unknown[];
+      features: Record<string, unknown>;
     };
     expect(typeof json.uptimeSeconds).toBe("number");
     expect(typeof json.sessionState).toBe("string");
     expect(Array.isArray(json.events)).toBe(true);
+    expect(json.features).toBeDefined();
+    expect(json.features.session).toBeDefined();
   });
 });

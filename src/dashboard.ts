@@ -56,6 +56,89 @@ export function renderDashboard(): string {
     }
     .card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 6px; }
     .card-val { font-size: 18px; font-weight: 600; word-break: break-all; }
+    .features-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+    .features-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .features-header h2 { font-size: 16px; font-weight: 600; }
+    .subtext { font-size: 12px; color: var(--muted); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .feature-item {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .feature-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .feature-name { font-weight: 600; font-size: 14px; }
+    .fbadge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-operational {
+      background: rgba(46, 204, 113, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(46, 204, 113, 0.4);
+    }
+    .badge-failing {
+      background: rgba(231, 76, 60, 0.15);
+      color: var(--red);
+      border: 1px solid rgba(231, 76, 60, 0.4);
+    }
+    .badge-pending {
+      background: rgba(241, 196, 15, 0.15);
+      color: var(--yellow);
+      border: 1px solid rgba(241, 196, 15, 0.4);
+    }
+    .feature-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .feature-details {
+      font-size: 12px;
+      color: var(--text);
+      word-break: break-word;
+      opacity: 0.85;
+    }
+    .test-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .test-btn:hover { opacity: 0.85; }
+    .test-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .events-card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -91,7 +174,10 @@ export function renderDashboard(): string {
   <div class="container">
     <header>
       <h1>TorrentBD Proxy</h1>
-      <div id="statusBadge" class="status-badge">Checking...</div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <button id="testBtn" onclick="runManualTest()" class="test-btn">Run Tests Now</button>
+        <div id="statusBadge" class="status-badge">Checking...</div>
+      </div>
     </header>
 
     <div class="grid">
@@ -113,6 +199,16 @@ export function renderDashboard(): string {
       </div>
     </div>
 
+    <div class="features-card">
+      <div class="features-header">
+        <h2>Feature Health</h2>
+        <span class="subtext">Auto-checks every 30m</span>
+      </div>
+      <div id="featuresGrid" class="features-grid">
+        <div class="subtext">Waiting for feature status...</div>
+      </div>
+    </div>
+
     <div class="events-card">
       <h2>Recent events</h2>
       <ul id="eventsList" class="event-list">
@@ -130,6 +226,21 @@ export function renderDashboard(): string {
       return h + "h " + (m % 60) + "m";
     }
 
+    async function runManualTest() {
+      const btn = document.getElementById("testBtn");
+      btn.disabled = true;
+      btn.textContent = "Testing...";
+      try {
+        await fetch("/test", { method: "POST" });
+        await updateStatus();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Run Tests Now";
+      }
+    }
+
     async function updateStatus() {
       try {
         const res = await fetch("/status");
@@ -141,6 +252,26 @@ export function renderDashboard(): string {
         document.getElementById("uptime").textContent = formatUptime(data.uptimeSeconds || 0);
         document.getElementById("lastLoginAt").textContent = data.lastLoginAt ? new Date(data.lastLoginAt).toLocaleTimeString() : "none";
         document.getElementById("lastError").textContent = data.lastError || "none";
+
+        const featuresGrid = document.getElementById("featuresGrid");
+        if (data.features && Object.keys(data.features).length > 0) {
+          featuresGrid.innerHTML = Object.values(data.features).map(f => {
+            const badgeClass = f.status === "operational" ? "badge-operational" : (f.status === "failing" ? "badge-failing" : "badge-pending");
+            const time = f.lastCheckedAt ? new Date(f.lastCheckedAt).toLocaleTimeString() : "Never";
+            const latency = f.latencyMs ? f.latencyMs + "ms" : "-";
+            return \`<div class="feature-item">
+              <div class="feature-item-header">
+                <span class="feature-name">\${f.name}</span>
+                <span class="fbadge \${badgeClass}">\${f.status}</span>
+              </div>
+              <div class="feature-meta">
+                <span>Latency: <strong>\${latency}</strong></span>
+                <span>Checked: <strong>\${time}</strong></span>
+              </div>
+              \${f.details ? \`<div class="feature-details">\${f.details}</div>\` : ""}
+            </div>\`;
+          }).join("");
+        }
 
         const eventsList = document.getElementById("eventsList");
         if (data.events && data.events.length > 0) {

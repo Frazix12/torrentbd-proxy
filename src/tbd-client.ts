@@ -16,6 +16,16 @@ function isLoginRedirect(html: string, finalUrl?: string): boolean {
   );
 }
 
+// Detects if a response indicates Cloudflare bot challenge or block.
+function isCloudflareChallenge(html: string, status?: number): boolean {
+  return (
+    status === 403 ||
+    status === 503 ||
+    html.includes("Just a moment...") ||
+    html.includes("challenges.cloudflare.com")
+  );
+}
+
 // Makes an authenticated POST to a TBD AJAX endpoint.
 // Retries once on session expiry.
 async function tbdPost(
@@ -38,9 +48,19 @@ async function tbdPost(
 
   const html = await res.text();
 
-  if (isLoginRedirect(html, res.url) && attempt === 0) {
+  if (
+    (isLoginRedirect(html, res.url) ||
+      isCloudflareChallenge(html, res.status)) &&
+    attempt === 0
+  ) {
     invalidateSession();
     return tbdPost(path, body, 1);
+  }
+
+  if (isCloudflareChallenge(html, res.status)) {
+    throw new Error(
+      `Cloudflare challenge blocked ${path} (HTTP ${res.status})`,
+    );
   }
 
   return html;
@@ -88,26 +108,63 @@ export async function browseTorrents(page = 1): Promise<string> {
   return tbdPost("ajgettorrents.php", body);
 }
 
-export async function downloadTorrent(id: string): Promise<Response> {
+export async function downloadTorrent(
+  id: string,
+  attempt = 0,
+): Promise<Response> {
   const headers = await getSessionHeaders();
   const res = await fetch(`${BASE}/download.php?id=${id}`, {
-    headers,
+    headers: {
+      ...headers,
+      Referer: `${BASE}/`,
+    },
     redirect: "follow",
   });
+
+  // Re-login and retry once if challenged or redirected to login
+  if ((!res.ok || res.url.includes("account-login.php")) && attempt === 0) {
+    invalidateSession();
+    return downloadTorrent(id, 1);
+  }
 
   if (!res.ok) {
     throw new Error(`Download failed: HTTP ${res.status}`);
   }
 
-  // Re-login and retry once if redirected to login
-  if (res.url.includes("account-login.php")) {
-    invalidateSession();
-    const headers2 = await getSessionHeaders();
-    return fetch(`${BASE}/download.php?id=${id}`, {
-      headers: headers2,
-      redirect: "follow",
-    });
-  }
-
   return res;
+}
+
+export async function checkDownloadConnectivity(
+  id: string,
+): Promise<{ ok: boolean; status: number; latencyMs: number; error?: string }> {
+  const start = Date.now();
+  try {
+    const headers = await getSessionHeaders();
+    const res = await fetch(`${BASE}/download.php?id=${id}`, {
+      method: "HEAD",
+      headers: {
+        ...headers,
+        Referer: `${BASE}/`,
+      },
+      redirect: "manual",
+    });
+
+    const latencyMs = Date.now() - start;
+    if (res.status === 200) {
+      return { ok: true, status: 200, latencyMs };
+    }
+    return {
+      ok: false,
+      status: res.status,
+      latencyMs,
+      error: `Download returned HTTP ${res.status}`,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      latencyMs: Date.now() - start,
+      error: String(err),
+    };
+  }
 }

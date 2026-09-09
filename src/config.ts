@@ -19,4 +19,7 @@ export const config = {
   cacheTtlSeconds: Number(process.env.CACHE_TTL_SECONDS ?? "300"),
   port: Number(process.env.PORT ?? DEFAULT_PORT),
   cloakProfileDir: process.env.CLOAK_PROFILE_DIR ?? "/data/cloak-profile",
+  healthCheckIntervalMinutes: Number(
+    process.env.HEALTH_CHECK_INTERVAL_MINUTES ?? "30",
+  ),
 };

@@ -11,6 +11,7 @@ import { buildCapsXml, buildSearchXml, buildErrorXml } from "./torznab";
 import { cache } from "./cache";
 import { runtimeStatus } from "./status";
 import { renderDashboard } from "./dashboard";
+import { runAllFeatureChecks, startPeriodicHealthChecks } from "./health-check";
 
 const app = new Hono();
 
@@ -22,6 +23,16 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 // Read-only LAN dashboard and status JSON
 app.get("/", (c) => c.html(renderDashboard()));
 app.get("/status", (c) => c.json(runtimeStatus.snapshot()));
+
+// Trigger on-demand feature tests
+app.post("/test", async (c) => {
+  try {
+    await runAllFeatureChecks();
+    return c.json({ ok: true, features: runtimeStatus.snapshot().features });
+  } catch (err) {
+    return c.json({ ok: false, error: String(err) }, 500);
+  }
+});
 
 // Request logging middleware
 app.use("*", async (c, next) => {
@@ -127,6 +138,11 @@ app.get("/download", requireApiKey, async (c) => {
 });
 
 console.log(`[torrentbd-proxy] Starting on port ${config.port}`);
+
+if (process.env.NODE_ENV !== "test") {
+  startPeriodicHealthChecks(config.healthCheckIntervalMinutes);
+}
+
 export { app };
 export default {
   port: config.port,

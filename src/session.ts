@@ -3,6 +3,7 @@
 // Handles Cloudflare bypass, reCAPTCHA v3, and TOTP 2FA.
 
 import { launchPersistentContext } from "cloakbrowser";
+import type { Frame, Page } from "playwright-core";
 import { TOTP } from "otpauth";
 import { config } from "./config";
 import { runtimeStatus } from "./status";
@@ -58,13 +59,61 @@ function cookiesToHeader(
   return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 }
 
+async function solveTurnstileUntilResolved(
+  page: Page,
+  isTargetResolved: () => Promise<boolean>,
+  maxWaitMs = 45000,
+): Promise<boolean> {
+  const start = Date.now();
+  let lastClickTime = 0;
+  while (Date.now() - start < maxWaitMs) {
+    if (await isTargetResolved()) return true;
+
+    const frame = page
+      .frames()
+      .find((f: Frame) => f.url().includes("challenges.cloudflare.com"));
+    if (frame) {
+      try {
+        const frameEl = await frame.frameElement();
+        const box = await frameEl.boundingBox();
+        const now = Date.now();
+        if (
+          box &&
+          box.width > 0 &&
+          box.height > 0 &&
+          now - lastClickTime > 4000
+        ) {
+          lastClickTime = now;
+          console.log(
+            "[session] Cloudflare Turnstile detected, clicking verification box...",
+          );
+          runtimeStatus.record(
+            "info",
+            "Cloudflare Turnstile detected, clicking verification box...",
+          );
+          await page.mouse.click(box.x + 30, box.y + box.height / 2);
+        }
+      } catch {
+        // Frame may be re-rendering or navigating
+      }
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  return isTargetResolved();
+}
+
 async function syncSession(): Promise<void> {
   runtimeStatus.setSessionState("checking");
   runtimeStatus.record("info", "Opening CloakBrowser persistent profile...");
+  const isHeadless = process.env.HEADLESS === "true" || !process.env.DISPLAY;
   const context = await launchPersistentContext({
     userDataDir: config.cloakProfileDir,
-    headless: true,
-    args: [`--fingerprint=${CLOAK_FINGERPRINT}`],
+    headless: isHeadless,
+    args: [
+      "--no-sandbox",
+      `--fingerprint=${CLOAK_FINGERPRINT}`,
+      "--fingerprint-platform=windows",
+    ],
   });
 
   try {
@@ -72,15 +121,49 @@ async function syncSession(): Promise<void> {
     const userAgent = await page.evaluate(() => navigator.userAgent);
 
     const storedCookies = await context.cookies();
-    if (!forceLogin) {
-      if (shouldReuseStoredCookies(storedCookies, forceLogin)) {
-        runtimeStatus.record(
-          "info",
-          "Reusing stored session cookies from persistent profile.",
+    if (!forceLogin && shouldReuseStoredCookies(storedCookies, forceLogin)) {
+      runtimeStatus.record(
+        "info",
+        "Verifying stored session cookies from persistent profile...",
+      );
+      try {
+        await page.goto(`${config.tbdBaseUrl}/`, {
+          waitUntil: "domcontentloaded",
+          timeout: 25000,
+        });
+        await solveTurnstileUntilResolved(
+          page,
+          async () => {
+            const title = await page.title();
+            return !title.includes("Just a moment");
+          },
+          15000,
         );
-        session = { cookies: storedCookies, userAgent };
-        runtimeStatus.setSessionState("authenticated");
-        return;
+        const currentUrl = page.url();
+        const title = await page.title();
+        const isValid =
+          !currentUrl.includes("account-login.php") &&
+          !title.includes("Just a moment");
+
+        if (isValid) {
+          runtimeStatus.record(
+            "info",
+            "Stored session cookies verified successfully.",
+          );
+          const freshCookies = await context.cookies();
+          session = { cookies: freshCookies, userAgent };
+          runtimeStatus.setSessionState("authenticated");
+          return;
+        }
+        runtimeStatus.record(
+          "warn",
+          "Stored session expired or challenged; re-authenticating...",
+        );
+      } catch (err) {
+        runtimeStatus.record(
+          "warn",
+          `Stored session check failed (${err}); re-authenticating...`,
+        );
       }
     }
 
@@ -100,8 +183,22 @@ async function syncSession(): Promise<void> {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
-    // Wait for Cloudflare challenge resolution and form readiness
-    await page.waitForSelector("#username", { timeout: 60000 });
+    // Handle Cloudflare Turnstile until #username is ready
+    await solveTurnstileUntilResolved(
+      page,
+      async () => {
+        const el = await page.$("#username");
+        if (!el) return false;
+        try {
+          return await el.isVisible();
+        } catch {
+          return false;
+        }
+      },
+      45000,
+    );
+    // Wait for form readiness
+    await page.waitForSelector("#username", { timeout: 30000 });
     // Ensure Google reCAPTCHA v3 script is loaded and ready
     await page.waitForFunction(
       () => {
