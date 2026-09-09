@@ -21,15 +21,20 @@ describe("reseed-dashboard", () => {
     expect(html).toContain('label for="maxBonusInput"');
     expect(html).toContain('id="maxBonusInput"');
 
-    expect(html).toContain('label for="minSizeInput"');
-    expect(html).toContain('id="minSizeInput"');
-    expect(html).toContain('label for="maxSizeInput"');
-    expect(html).toContain('id="maxSizeInput"');
-
     expect(html).toContain('label for="fromDateInput"');
     expect(html).toContain('id="fromDateInput"');
     expect(html).toContain('label for="toDateInput"');
     expect(html).toContain('id="toDateInput"');
+
+    // View toggle and controls
+    expect(html).toContain('id="tableViewBtn"');
+    expect(html).toContain('id="gridViewBtn"');
+    expect(html).toContain('id="sortSelect"');
+    expect(html).toContain('id="pageSizeSelect"');
+    expect(html).toContain('id="prevPageBtn"');
+    expect(html).toContain('id="nextPageBtn"');
+    expect(html).toContain('id="pageInfo"');
+    expect(html).toContain('id="gridWrapper"');
 
     // Controls
     expect(html).toContain('id="clearFiltersBtn"');
@@ -48,7 +53,9 @@ describe("reseed-dashboard", () => {
     expect(html).toContain('id="reseedTable"');
 
     // Script module and link back to main dashboard
-    expect(html).toContain('<script type="module" src="/reseed-ui.js"></script>');
+    expect(html).toContain(
+      '<script type="module" src="/reseed-ui.js"></script>',
+    );
     expect(html).toContain('href="/"');
   });
 });

@@ -44,6 +44,7 @@ async function tbdPost(
     },
     body: body.toString(),
     redirect: "follow",
+    signal: AbortSignal.timeout(30000),
   });
 
   const html = await res.text();
@@ -119,6 +120,7 @@ export async function downloadTorrent(
       Referer: `${BASE}/`,
     },
     redirect: "follow",
+    signal: AbortSignal.timeout(60000),
   });
 
   // Re-login and retry once if challenged or redirected to login
@@ -158,6 +160,7 @@ export async function fetchReseedPage(
     method: "GET",
     headers: { ...headers, Referer: `${BASE}/reseed-requests.php` },
     redirect: "follow",
+    signal: AbortSignal.timeout(30000),
   });
   const html = await response.text();
   const challenged = isCloudflareChallenge(html, response.status);
@@ -167,7 +170,9 @@ export async function fetchReseedPage(
     return fetchReseedPage(target.href, 1);
   }
   if (challenged) {
-    throw new Error(`Cloudflare challenge blocked reseed page (HTTP ${response.status})`);
+    throw new Error(
+      `Cloudflare challenge blocked reseed page (HTTP ${response.status})`,
+    );
   }
   if (!response.ok || isLoginRedirect(html, response.url)) {
     throw new Error(`Reseed page failed: HTTP ${response.status}`);
@@ -188,6 +193,7 @@ export async function checkDownloadConnectivity(
         Referer: `${BASE}/`,
       },
       redirect: "manual",
+      signal: AbortSignal.timeout(15000),
     });
 
     const latencyMs = Date.now() - start;

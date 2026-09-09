@@ -151,7 +151,10 @@ function createApp(deps?: AppDeps): Hono {
   });
 
   // API key auth middleware
-  async function requireApiKey(c: Context, next: Next): Promise<Response | void> {
+  async function requireApiKey(
+    c: Context,
+    next: Next,
+  ): Promise<Response | void> {
     const key = c.req.query("apikey");
     if (key !== config.proxyApiKey) {
       return c.text("Forbidden: invalid apikey", 403);

@@ -255,6 +255,150 @@ export function renderReseedDashboard(): string {
       color: var(--muted);
       font-size: 14px;
     }
+
+    .results-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .toolbar-left, .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .view-toggle {
+      display: inline-flex;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .btn-view {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-view.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-view:not(.active):hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+    }
+    .pagination-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .select-compact {
+      width: auto;
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+    .btn-compact {
+      padding: 5px 12px;
+      font-size: 12px;
+    }
+    .page-info {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+      padding: 0 4px;
+    }
+    .reseed-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .reseed-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .reseed-card:hover {
+      border-color: rgba(76, 130, 251, 0.4);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .category-badge {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(76, 130, 251, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(76, 130, 251, 0.3);
+      max-width: 65%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bonus-badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(241, 196, 15, 0.15);
+      color: var(--yellow);
+      border: 1px solid rgba(241, 196, 15, 0.3);
+      white-space: nowrap;
+    }
+    .card-title-text {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .card-details-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .meta-label {
+      color: var(--muted);
+    }
+    .meta-val {
+      color: var(--text);
+      font-weight: 500;
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .card-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
   </style>
 </head>
 <body>
@@ -319,14 +463,6 @@ export function renderReseedDashboard(): string {
           <input type="number" id="maxBonusInput" class="filter-input" min="0" placeholder="Max bonus" />
         </div>
         <div class="filter-group">
-          <label for="minSizeInput">Min Size</label>
-          <input type="number" id="minSizeInput" class="filter-input" min="0" placeholder="Min bytes" />
-        </div>
-        <div class="filter-group">
-          <label for="maxSizeInput">Max Size</label>
-          <input type="number" id="maxSizeInput" class="filter-input" min="0" placeholder="Max bytes" />
-        </div>
-        <div class="filter-group">
           <label for="fromDateInput">From Date</label>
           <input type="date" id="fromDateInput" class="filter-input" />
         </div>
@@ -341,7 +477,40 @@ export function renderReseedDashboard(): string {
     </div>
 
     <div class="table-card">
-      <div class="table-responsive">
+      <div class="results-toolbar">
+        <div class="toolbar-left">
+          <div class="view-toggle" role="group" aria-label="View mode">
+            <button id="tableViewBtn" class="btn-view active" type="button" aria-pressed="true">Table</button>
+            <button id="gridViewBtn" class="btn-view" type="button" aria-pressed="false">Grid</button>
+          </div>
+          <div class="sort-control">
+            <select id="sortSelect" class="filter-select select-compact" aria-label="Sort by">
+              <option value="seedBonus:desc">Bonus (High to Low)</option>
+              <option value="seedBonus:asc">Bonus (Low to High)</option>
+              <option value="requestedAt:desc" selected>Date (Newest first)</option>
+              <option value="requestedAt:asc">Date (Oldest first)</option>
+              <option value="title:asc">Title (A–Z)</option>
+              <option value="title:desc">Title (Z–A)</option>
+              <option value="category:asc">Category (A–Z)</option>
+            </select>
+          </div>
+        </div>
+        <div class="toolbar-right">
+          <div class="pagination-controls">
+            <label for="pageSizeSelect" class="subtext">Per page:</label>
+            <select id="pageSizeSelect" class="filter-select select-compact">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+            <button id="prevPageBtn" class="btn btn-secondary btn-compact" type="button" disabled>◀ Prev</button>
+            <span id="pageInfo" class="page-info">Page 1 of 1</span>
+            <button id="nextPageBtn" class="btn btn-secondary btn-compact" type="button" disabled>Next ▶</button>
+          </div>
+        </div>
+      </div>
+      <div id="tableWrapper" class="table-responsive">
         <table id="reseedTable">
           <thead>
             <tr id="tableHeaderRow"></tr>
@@ -349,6 +518,7 @@ export function renderReseedDashboard(): string {
           <tbody id="tableBody"></tbody>
         </table>
       </div>
+      <div id="gridWrapper" class="reseed-grid" style="display: none;"></div>
       <div id="emptyState" class="empty-state" style="display: none;">
         No reseed requests match the current filters.
       </div>

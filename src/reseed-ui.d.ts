@@ -42,3 +42,16 @@ export function sortRequests<T extends ReseedRowItem>(
   requests: T[],
   sort: ReseedSortOptions,
 ): T[];
+
+export interface ReseedPaginationResult<T> {
+  items: T[];
+  page: number;
+  totalPages: number;
+  totalItems: number;
+}
+
+export function paginateRequests<T>(
+  requests: T[],
+  page?: number,
+  pageSize?: number | string,
+): ReseedPaginationResult<T>;

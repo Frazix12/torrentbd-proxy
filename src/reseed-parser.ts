@@ -28,11 +28,11 @@ const HEADER_ALIASES = {
   title: new Set(["torrent", "title"]),
   category: new Set(["category"]),
   requester: new Set(["requested by", "requester"]),
-  seedBonus: new Set(["seed bonus", "bonus"]),
+  seedBonus: new Set(["seed bonus", "bonus", "reward", "seedbonus"]),
   size: new Set(["size"]),
   seeders: new Set(["seeders"]),
   leechers: new Set(["leechers"]),
-  requestedAt: new Set(["requested", "request date", "age"]),
+  requestedAt: new Set(["requested", "request date", "age", "requested at"]),
 };
 
 const NORMALIZED_HEADERS = new Set(
@@ -87,10 +87,7 @@ function fieldForHeader(
   return undefined;
 }
 
-function resolvePaginationUrl(
-  href: string,
-  baseUrl: URL,
-): string {
+function resolvePaginationUrl(href: string, baseUrl: URL): string {
   const target = new URL(href, baseUrl);
   if (target.origin !== baseUrl.origin) {
     throw new Error("Invalid reseed pagination origin");
@@ -113,7 +110,12 @@ export function parseReseedPage(
   html: string,
   baseUrl: string,
 ): ParsedReseedPage {
-  const origin = new URL(baseUrl);
+  let origin: URL;
+  try {
+    origin = new URL(baseUrl);
+  } catch {
+    throw new Error("Invalid base URL");
+  }
   const $ = cheerio.load(html);
   const hasLoginForm = $("form[action]")
     .toArray()
@@ -140,6 +142,7 @@ export function parseReseedPage(
   const tableElement = $("table")
     .toArray()
     .find((element) => {
+      if ($(element).hasClass("reseed-req-table")) return true;
       const names = new Set(
         readHeaders(element).map(({ normalized }) => normalized),
       );
@@ -163,10 +166,7 @@ export function parseReseedPage(
     const cells = $(row).find("td").toArray();
     if (cells.length === 0) return;
 
-    const values = new Map<
-      string,
-      { text: string; title: string | null }
-    >();
+    const values = new Map<string, { text: string; title: string | null }>();
     const details: Record<string, string> = {};
 
     cells.forEach((cell, index) => {
@@ -176,7 +176,9 @@ export function parseReseedPage(
       const $cell = $(cell);
       const text =
         normalizeWhitespace($cell.text()) ||
-        normalizeWhitespace($cell.find("[title]").first().attr("title") ?? "") ||
+        normalizeWhitespace(
+          $cell.find("[title]").first().attr("title") ?? "",
+        ) ||
         normalizeWhitespace($cell.find("[alt]").first().attr("alt") ?? "");
       const title =
         $cell.attr("title") ?? $cell.find("[title]").first().attr("title");
@@ -186,18 +188,12 @@ export function parseReseedPage(
       };
       values.set(header.normalized, value);
 
-      if (
-        header.label &&
-        text &&
-        !NORMALIZED_HEADERS.has(header.normalized)
-      ) {
+      if (header.label && text && !NORMALIZED_HEADERS.has(header.normalized)) {
         details[header.label] = text;
       }
     });
 
-    const detailsLink = $(row)
-      .find("a[href*='torrents-details']")
-      .first();
+    const detailsLink = $(row).find("a[href*='torrents-details']").first();
     const href = detailsLink.attr("href");
     if (!href) {
       throw new Error("Reseed request row is missing a numeric torrent ID");
@@ -218,13 +214,50 @@ export function parseReseedPage(
       throw new Error(`Reseed request ${torrentId} is missing a title`);
     }
 
-    const category = fieldForHeader(values, HEADER_ALIASES.category)?.text;
-    const requester = fieldForHeader(values, HEADER_ALIASES.requester)?.text;
+    let category = fieldForHeader(values, HEADER_ALIASES.category)?.text;
+    if (!category) {
+      const catImg = $(row).find("img.cat-pic-img, img[title*=':']").first();
+      category = catImg.attr("title") || undefined;
+    }
+
+    let requester: string | null = null;
+    let requestedAt: string | null = null;
+
+    const reqCellHeader = headers.find((h) =>
+      HEADER_ALIASES.requester.has(h.normalized),
+    );
+    if (reqCellHeader) {
+      const cellIdx = headers.indexOf(reqCellHeader);
+      const $reqCell = $(cells[cellIdx]);
+      const rankEl = $reqCell.find(".tbdrank");
+      if (rankEl.length > 0) {
+        requester = normalizeWhitespace(rankEl.text()) || null;
+      }
+      const rawText = normalizeWhitespace($reqCell.text());
+      const onMatch = rawText.match(/\bon\s+(.+)$/i);
+      if (onMatch) {
+        requestedAt = normalizeWhitespace(onMatch[1]);
+      }
+      if (!requester && rawText) {
+        requester = onMatch
+          ? normalizeWhitespace(rawText.split(/\s+on\s+/i)[0])
+          : rawText;
+      }
+    }
+
+    if (!requester) {
+      requester =
+        fieldForHeader(values, HEADER_ALIASES.requester)?.text || null;
+    }
+    if (!requestedAt) {
+      const requested = fieldForHeader(values, HEADER_ALIASES.requestedAt);
+      requestedAt = requested?.title || requested?.text || null;
+    }
+
     const bonus = fieldForHeader(values, HEADER_ALIASES.seedBonus)?.text;
     const size = fieldForHeader(values, HEADER_ALIASES.size)?.text;
     const seeders = fieldForHeader(values, HEADER_ALIASES.seeders)?.text;
     const leechers = fieldForHeader(values, HEADER_ALIASES.leechers)?.text;
-    const requested = fieldForHeader(values, HEADER_ALIASES.requestedAt);
 
     requests.push({
       torrentId,
@@ -237,19 +270,22 @@ export function parseReseedPage(
       sizeText: size || null,
       seeders: seeders ? parseNumber(seeders) : null,
       leechers: leechers ? parseNumber(leechers) : null,
-      requestedAt: requested?.title || requested?.text || null,
+      requestedAt,
       detailsUrl: detailsUrl.href,
       details,
     });
   });
 
-  const relNext = $("a[rel~='next'][href]").first();
+  const relNext = $("a[rel~='next'][href], a[title*='Next'][href]").first();
   let nextHref = relNext.attr("href") ?? null;
   if (!nextHref) {
     $("a[href]").each((_, link) => {
-      if (nextHref || normalizeHeader($(link).text()) !== "next") return;
-      const href = $(link).attr("href");
-      if (href && hasReseedPaginationPath(href, origin)) nextHref = href;
+      if (nextHref) return;
+      const text = normalizeHeader($(link).text());
+      if (text === "next" || text === "chevron_right") {
+        const href = $(link).attr("href");
+        if (href && hasReseedPaginationPath(href, origin)) nextHref = href;
+      }
     });
   }
 

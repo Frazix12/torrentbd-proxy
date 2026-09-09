@@ -150,4 +150,60 @@ describe("parseReseedPage", () => {
       "details origin",
     );
   });
+
+  it("parses real TorrentBD reseed request page markup", () => {
+    const tbdHtml = `
+      <table class="striped boxed simple-data-table reseed-req-table">
+        <thead>
+          <tr>
+            <th>Torrent</th>
+            <th>Requested by</th>
+            <th>Valid till</th>
+            <th>Reward</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <img class="cat-pic-img" src="images/categories/v3/i_tv_seasons_hd_2.png" title="TV: Packs - 720p | 1080p">
+              <a href="torrents-details.php?id=648978">
+                Tales from the Loop S01 1080p AMZN WEB-DL DD+5.1 H.264-iKA
+              </a>
+              <div class="margin-t-5 green-text right-align"></div>
+            </td>
+            <td>
+              <span class="tbdrank power-user">41iF</span> <br>on 2026-09-09 10:28 PM
+            </td>
+            <td>2026-09-16 10:28 PM</td>
+            <td>2300 Seedbonus</td>
+          </tr>
+        </tbody>
+      </table>
+      <ul class="pagination">
+        <li class="paginator active"><a class="waves-effect" href="/reseed-requests.php?page=1" title="Page 1">1</a></li>
+        <li class="paginator "><a class="waves-effect" href="/reseed-requests.php?page=2" title="Next page"><i class="material-icons">chevron_right</i></a></li>
+      </ul>
+    `;
+
+    const result = parseReseedPage(tbdHtml, "https://www.torrentbd.net");
+    expect(result.requests).toHaveLength(1);
+    expect(result.requests[0]).toEqual(
+      expect.objectContaining({
+        torrentId: "648978",
+        title: "Tales from the Loop S01 1080p AMZN WEB-DL DD+5.1 H.264-iKA",
+        category: "TV: Packs - 720p | 1080p",
+        requester: "41iF",
+        seedBonus: 2300,
+        seedBonusText: "2300 Seedbonus",
+        requestedAt: "2026-09-09 10:28 PM",
+        detailsUrl: "https://www.torrentbd.net/torrents-details.php?id=648978",
+        details: {
+          "Valid till": "2026-09-16 10:28 PM",
+        },
+      }),
+    );
+    expect(result.nextUrl).toBe(
+      "https://www.torrentbd.net/reseed-requests.php?page=2",
+    );
+  });
 });

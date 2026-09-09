@@ -30,17 +30,43 @@ export function filterRequests(requests, filters) {
   if (!Array.isArray(requests)) return [];
   if (!filters || typeof filters !== "object") return requests.slice();
 
-  const query = filters.query ? String(filters.query).toLocaleLowerCase().trim() : "";
-  const category = filters.category && String(filters.category).trim() !== "" ? String(filters.category).trim() : null;
-  const requester = filters.requester && String(filters.requester).trim() !== "" ? String(filters.requester).trim() : null;
+  const query = filters.query
+    ? String(filters.query).toLocaleLowerCase().trim()
+    : "";
+  const category =
+    filters.category && String(filters.category).trim() !== ""
+      ? String(filters.category).trim()
+      : null;
+  const requester =
+    filters.requester && String(filters.requester).trim() !== ""
+      ? String(filters.requester).trim()
+      : null;
 
-  const minBonus = filters.minBonus != null && Number.isFinite(Number(filters.minBonus)) ? Number(filters.minBonus) : null;
-  const maxBonus = filters.maxBonus != null && Number.isFinite(Number(filters.maxBonus)) ? Number(filters.maxBonus) : null;
-  const minSize = filters.minSize != null && Number.isFinite(Number(filters.minSize)) ? Number(filters.minSize) : null;
-  const maxSize = filters.maxSize != null && Number.isFinite(Number(filters.maxSize)) ? Number(filters.maxSize) : null;
+  const minBonus =
+    filters.minBonus != null && Number.isFinite(Number(filters.minBonus))
+      ? Number(filters.minBonus)
+      : null;
+  const maxBonus =
+    filters.maxBonus != null && Number.isFinite(Number(filters.maxBonus))
+      ? Number(filters.maxBonus)
+      : null;
+  const minSize =
+    filters.minSize != null && Number.isFinite(Number(filters.minSize))
+      ? Number(filters.minSize)
+      : null;
+  const maxSize =
+    filters.maxSize != null && Number.isFinite(Number(filters.maxSize))
+      ? Number(filters.maxSize)
+      : null;
 
-  const fromDate = filters.fromDate && String(filters.fromDate).trim() !== "" ? String(filters.fromDate).trim() : null;
-  const toDate = filters.toDate && String(filters.toDate).trim() !== "" ? String(filters.toDate).trim() : null;
+  const fromDate =
+    filters.fromDate && String(filters.fromDate).trim() !== ""
+      ? String(filters.fromDate).trim()
+      : null;
+  const toDate =
+    filters.toDate && String(filters.toDate).trim() !== ""
+      ? String(filters.toDate).trim()
+      : null;
 
   return requests.filter((row) => {
     if (!row || typeof row !== "object") return false;
@@ -50,7 +76,11 @@ export function filterRequests(requests, filters) {
       const title = String(row.title ?? "").toLocaleLowerCase();
       const torrentId = String(row.torrentId ?? "").toLocaleLowerCase();
       const req = String(row.requester ?? "").toLocaleLowerCase();
-      if (!title.includes(query) && !torrentId.includes(query) && !req.includes(query)) {
+      if (
+        !title.includes(query) &&
+        !torrentId.includes(query) &&
+        !req.includes(query)
+      ) {
         return false;
       }
     }
@@ -148,17 +178,49 @@ export function sortRequests(requests, sort) {
         cmp = String(valA).localeCompare(String(valB));
       }
     } else {
-      cmp = String(valA).localeCompare(String(valB), undefined, { numeric: true, sensitivity: "base" });
+      cmp = String(valA).localeCompare(String(valB), undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
     }
 
     return direction === "desc" ? -cmp : cmp;
   });
 }
 
+export function paginateRequests(requests, page = 1, pageSize = 50) {
+  if (!Array.isArray(requests)) {
+    return { items: [], page: 1, totalPages: 1, totalItems: 0 };
+  }
+  if (pageSize === "all" || !pageSize || pageSize <= 0) {
+    return {
+      items: requests,
+      page: 1,
+      totalPages: 1,
+      totalItems: requests.length,
+    };
+  }
+  const size = Number(pageSize);
+  const totalItems = requests.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / size));
+  const validPage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  const start = (validPage - 1) * size;
+  const items = requests.slice(start, start + size);
+  return {
+    items,
+    page: validPage,
+    totalPages,
+    totalItems,
+  };
+}
+
 // Browser DOM controller
 let allRequests = [];
 let detailColumns = [];
 const currentSort = { key: "requestedAt", direction: "desc" };
+let currentView = "table";
+let currentPage = 1;
+let currentPageSize = 50;
 
 function parseNonNegativeNumber(val) {
   if (val == null || val === "") return null;
@@ -181,8 +243,12 @@ function getCurrentFilters() {
     query: searchInput ? searchInput.value : "",
     category: categorySelect ? categorySelect.value : "",
     requester: requesterSelect ? requesterSelect.value : "",
-    minBonus: minBonusInput ? parseNonNegativeNumber(minBonusInput.value) : null,
-    maxBonus: maxBonusInput ? parseNonNegativeNumber(maxBonusInput.value) : null,
+    minBonus: minBonusInput
+      ? parseNonNegativeNumber(minBonusInput.value)
+      : null,
+    maxBonus: maxBonusInput
+      ? parseNonNegativeNumber(maxBonusInput.value)
+      : null,
     minSize: minSizeInput ? parseNonNegativeNumber(minSizeInput.value) : null,
     maxSize: maxSizeInput ? parseNonNegativeNumber(maxSizeInput.value) : null,
     fromDate: fromDateInput ? fromDateInput.value : "",
@@ -197,19 +263,24 @@ function updateSummaryCards(data) {
   const stateEl = document.getElementById("summaryState");
   const errorEl = document.getElementById("errorState");
 
-  const totalCount = data.count ?? (Array.isArray(data.requests) ? data.requests.length : 0);
+  const totalCount =
+    data.count ?? (Array.isArray(data.requests) ? data.requests.length : 0);
   if (countEl) countEl.textContent = totalCount.toLocaleString();
 
   let totalBonus = data.totalSeedBonus;
   if (totalBonus == null && Array.isArray(data.requests)) {
     totalBonus = data.requests.reduce((sum, r) => sum + (r.seedBonus || 0), 0);
   }
-  if (bonusEl) bonusEl.textContent = totalBonus == null ? "0" : totalBonus.toLocaleString();
+  if (bonusEl)
+    bonusEl.textContent =
+      totalBonus == null ? "0" : totalBonus.toLocaleString();
 
   const sync = data.sync || {};
   if (syncTimeEl) {
     if (sync.lastSuccessfulSyncAt) {
-      syncTimeEl.textContent = new Date(sync.lastSuccessfulSyncAt).toLocaleString();
+      syncTimeEl.textContent = new Date(
+        sync.lastSuccessfulSyncAt,
+      ).toLocaleString();
     } else {
       syncTimeEl.textContent = "Never";
     }
@@ -217,7 +288,13 @@ function updateSummaryCards(data) {
 
   if (stateEl) {
     stateEl.textContent = sync.state || "idle";
-    stateEl.className = "card-val " + (sync.state === "error" ? "state-error" : (sync.state === "running" ? "state-running" : "state-ok"));
+    stateEl.className =
+      "card-val " +
+      (sync.state === "error"
+        ? "state-error"
+        : sync.state === "running"
+          ? "state-running"
+          : "state-ok");
   }
 
   if (errorEl) {
@@ -282,9 +359,6 @@ function renderTableHeaders() {
     { label: "Category", key: "category" },
     { label: "Requester", key: "requester" },
     { label: "Seed Bonus", key: "seedBonus" },
-    { label: "Size", key: "sizeBytes" },
-    { label: "Seeders", key: "seeders" },
-    { label: "Leechers", key: "leechers" },
     { label: "Requested", key: "requestedAt" },
   ];
 
@@ -294,7 +368,9 @@ function renderTableHeaders() {
     th.dataset.key = h.key;
     th.className = "sortable";
     if (currentSort.key === h.key) {
-      th.classList.add(currentSort.direction === "asc" ? "sorted-asc" : "sorted-desc");
+      th.classList.add(
+        currentSort.direction === "asc" ? "sorted-asc" : "sorted-desc",
+      );
       const arrow = document.createElement("span");
       arrow.textContent = currentSort.direction === "asc" ? " ▲" : " ▼";
       arrow.className = "sort-arrow";
@@ -312,7 +388,9 @@ function renderTableHeaders() {
     th.dataset.key = fullKey;
     th.className = "sortable";
     if (currentSort.key === fullKey) {
-      th.classList.add(currentSort.direction === "asc" ? "sorted-asc" : "sorted-desc");
+      th.classList.add(
+        currentSort.direction === "asc" ? "sorted-asc" : "sorted-desc",
+      );
       const arrow = document.createElement("span");
       arrow.textContent = currentSort.direction === "asc" ? " ▲" : " ▼";
       arrow.className = "sort-arrow";
@@ -334,36 +412,103 @@ function handleHeaderClick(key) {
     currentSort.direction = currentSort.direction === "asc" ? "desc" : "asc";
   } else {
     currentSort.key = key;
-    currentSort.direction = key === "seedBonus" || key === "requestedAt" || key === "sizeBytes" ? "desc" : "asc";
+    currentSort.direction =
+      key === "seedBonus" || key === "requestedAt" ? "desc" : "asc";
   }
+  syncSortSelect();
   renderTableHeaders();
-  renderTableBody();
+  renderView();
 }
 
-function renderTableBody() {
-  const tbody = document.getElementById("tableBody");
-  const emptyState = document.getElementById("emptyState");
+function syncSortSelect() {
+  const sortSelect = document.getElementById("sortSelect");
+  if (!sortSelect) return;
+  const targetVal = `${currentSort.key}:${currentSort.direction}`;
+  for (const opt of sortSelect.options) {
+    if (opt.value === targetVal) {
+      sortSelect.value = targetVal;
+      return;
+    }
+  }
+}
+
+function handleSortChange(e) {
+  const [key, direction] = e.target.value.split(":");
+  if (key && direction) {
+    currentSort.key = key;
+    currentSort.direction = direction;
+    renderTableHeaders();
+    renderView();
+  }
+}
+
+function renderView() {
+  const filtered = filterRequests(allRequests, getCurrentFilters());
+  const sorted = sortRequests(filtered, currentSort);
+  const paginated = paginateRequests(sorted, currentPage, currentPageSize);
+  currentPage = paginated.page;
+
   const matchCountEl = document.getElementById("matchCount");
+  if (matchCountEl) {
+    if (paginated.totalItems === 0) {
+      matchCountEl.textContent = "0 requests found";
+    } else if (
+      currentPageSize === "all" ||
+      paginated.totalItems <= paginated.items.length
+    ) {
+      matchCountEl.textContent = `Showing all ${paginated.totalItems.toLocaleString()} requests`;
+    } else {
+      const startIdx = (paginated.page - 1) * Number(currentPageSize) + 1;
+      const endIdx = startIdx + paginated.items.length - 1;
+      matchCountEl.textContent = `Showing ${startIdx}–${endIdx} of ${paginated.totalItems.toLocaleString()} requests`;
+    }
+  }
+
+  const pageInfoEl = document.getElementById("pageInfo");
+  if (pageInfoEl) {
+    pageInfoEl.textContent = `Page ${paginated.page} of ${paginated.totalPages}`;
+  }
+
+  const prevBtn = document.getElementById("prevPageBtn");
+  if (prevBtn) prevBtn.disabled = paginated.page <= 1;
+
+  const nextPageBtn = document.getElementById("nextPageBtn");
+  if (nextPageBtn)
+    nextPageBtn.disabled = paginated.page >= paginated.totalPages;
+
+  const emptyState = document.getElementById("emptyState");
+  const tableWrapper = document.getElementById("tableWrapper");
+  const gridWrapper = document.getElementById("gridWrapper");
+
+  if (paginated.totalItems === 0) {
+    if (emptyState) emptyState.style.display = "block";
+    if (tableWrapper) tableWrapper.style.display = "none";
+    if (gridWrapper) gridWrapper.style.display = "none";
+    return;
+  }
+
+  if (emptyState) emptyState.style.display = "none";
+
+  if (currentView === "grid") {
+    if (tableWrapper) tableWrapper.style.display = "none";
+    if (gridWrapper) gridWrapper.style.display = "grid";
+    renderGridRows(paginated.items);
+  } else {
+    if (tableWrapper) tableWrapper.style.display = "block";
+    if (gridWrapper) gridWrapper.style.display = "none";
+    renderTableRows(paginated.items);
+  }
+}
+
+function renderTableRows(items) {
+  const tbody = document.getElementById("tableBody");
   if (!tbody) return;
 
   while (tbody.firstChild) {
     tbody.removeChild(tbody.firstChild);
   }
 
-  const filtered = filterRequests(allRequests, getCurrentFilters());
-  const sorted = sortRequests(filtered, currentSort);
-
-  if (matchCountEl) {
-    matchCountEl.textContent = `Showing ${sorted.length.toLocaleString()} of ${allRequests.length.toLocaleString()} requests`;
-  }
-
-  if (sorted.length === 0) {
-    if (emptyState) emptyState.style.display = "block";
-    return;
-  }
-  if (emptyState) emptyState.style.display = "none";
-
-  for (const row of sorted) {
+  for (const row of items) {
     const tr = document.createElement("tr");
 
     // 1. Torrent title
@@ -394,25 +539,12 @@ function renderTableBody() {
 
     // 4. Seed Bonus
     const tdBonus = document.createElement("td");
-    tdBonus.textContent = row.seedBonusText || (row.seedBonus == null ? "—" : row.seedBonus.toLocaleString());
+    tdBonus.textContent =
+      row.seedBonusText ||
+      (row.seedBonus == null ? "—" : row.seedBonus.toLocaleString());
     tr.appendChild(tdBonus);
 
-    // 5. Size
-    const tdSize = document.createElement("td");
-    tdSize.textContent = row.sizeText || (row.sizeBytes == null ? "—" : row.sizeBytes.toLocaleString() + " B");
-    tr.appendChild(tdSize);
-
-    // 6. Seeders
-    const tdSeeders = document.createElement("td");
-    tdSeeders.textContent = row.seeders == null ? "—" : String(row.seeders);
-    tr.appendChild(tdSeeders);
-
-    // 7. Leechers
-    const tdLeechers = document.createElement("td");
-    tdLeechers.textContent = row.leechers == null ? "—" : String(row.leechers);
-    tr.appendChild(tdLeechers);
-
-    // 8. Requested
+    // 5. Requested
     const tdRequested = document.createElement("td");
     tdRequested.textContent = row.requestedAt || "—";
     tr.appendChild(tdRequested);
@@ -420,7 +552,8 @@ function renderTableBody() {
     // Extra dynamic detail columns
     for (const detailKey of detailColumns) {
       const tdDetail = document.createElement("td");
-      tdDetail.textContent = row.details && row.details[detailKey] ? row.details[detailKey] : "—";
+      tdDetail.textContent =
+        row.details && row.details[detailKey] ? row.details[detailKey] : "—";
       tr.appendChild(tdDetail);
     }
 
@@ -456,6 +589,119 @@ function renderTableBody() {
   }
 }
 
+function renderGridRows(items) {
+  const grid = document.getElementById("gridWrapper");
+  if (!grid) return;
+
+  while (grid.firstChild) {
+    grid.removeChild(grid.firstChild);
+  }
+
+  for (const row of items) {
+    const card = document.createElement("div");
+    card.className = "reseed-card";
+
+    // Top: Category and Bonus
+    const cardTop = document.createElement("div");
+    cardTop.className = "card-top";
+
+    const catBadge = document.createElement("span");
+    catBadge.className = "category-badge";
+    catBadge.textContent = row.category || "Torrent";
+    cardTop.appendChild(catBadge);
+
+    const bonusBadge = document.createElement("span");
+    bonusBadge.className = "bonus-badge";
+    bonusBadge.textContent =
+      row.seedBonusText ||
+      (row.seedBonus == null
+        ? "Reseed"
+        : `${row.seedBonus.toLocaleString()} Bonus`);
+    cardTop.appendChild(bonusBadge);
+
+    card.appendChild(cardTop);
+
+    // Title
+    const titleContainer = document.createElement("div");
+    titleContainer.className = "card-title-container";
+    const titleText = row.title || `Torrent #${row.torrentId}`;
+    if (row.detailsUrl && /^https?:\/\//i.test(row.detailsUrl)) {
+      const a = document.createElement("a");
+      a.href = row.detailsUrl;
+      a.textContent = titleText;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.className = "torrent-title-link card-title-text";
+      titleContainer.appendChild(a);
+    } else {
+      const span = document.createElement("span");
+      span.textContent = titleText;
+      span.className = "card-title-text";
+      titleContainer.appendChild(span);
+    }
+    card.appendChild(titleContainer);
+
+    // Meta details list
+    const metaList = document.createElement("div");
+    metaList.className = "card-details-list";
+
+    if (row.requester) {
+      metaList.appendChild(createMetaRow("Requested by", row.requester));
+    }
+    if (row.requestedAt) {
+      metaList.appendChild(createMetaRow("Requested at", row.requestedAt));
+    }
+    if (row.details && typeof row.details === "object") {
+      for (const [k, v] of Object.entries(row.details)) {
+        if (v) metaList.appendChild(createMetaRow(k, String(v)));
+      }
+    }
+    card.appendChild(metaList);
+
+    // Actions
+    const cardActions = document.createElement("div");
+    cardActions.className = "card-actions";
+
+    if (/^\d+$/.test(String(row.torrentId))) {
+      const dlLink = document.createElement("a");
+      const params = new URLSearchParams();
+      params.set("id", String(row.torrentId));
+      dlLink.href = `/reseed-download?${params.toString()}`;
+      dlLink.textContent = "Download";
+      dlLink.className = "btn-action btn-download";
+      dlLink.setAttribute("download", "");
+      cardActions.appendChild(dlLink);
+    }
+
+    if (row.detailsUrl && /^https?:\/\//i.test(row.detailsUrl)) {
+      const extLink = document.createElement("a");
+      extLink.href = row.detailsUrl;
+      extLink.textContent = "Open on TBD";
+      extLink.target = "_blank";
+      extLink.rel = "noopener noreferrer";
+      extLink.className = "btn-action btn-open";
+      cardActions.appendChild(extLink);
+    }
+
+    card.appendChild(cardActions);
+    grid.appendChild(card);
+  }
+}
+
+function createMetaRow(label, value) {
+  const row = document.createElement("div");
+  row.className = "meta-row";
+  const lbl = document.createElement("span");
+  lbl.className = "meta-label";
+  lbl.textContent = label;
+  const val = document.createElement("span");
+  val.className = "meta-val";
+  val.textContent = value;
+  row.appendChild(lbl);
+  row.appendChild(val);
+  return row;
+}
+
 async function loadData() {
   try {
     const res = await fetch("/reseed-data");
@@ -478,7 +724,8 @@ async function loadData() {
     updateSummaryCards(data);
     populateDropdownOptions();
     renderTableHeaders();
-    renderTableBody();
+    syncSortSelect();
+    renderView();
 
     const refreshBtn = document.getElementById("refreshBtn");
     if (refreshBtn && data.sync && data.sync.state === "running") {
@@ -561,7 +808,8 @@ function handleClearFilters() {
   if (fromDateInput) fromDateInput.value = "";
   if (toDateInput) toDateInput.value = "";
 
-  renderTableBody();
+  currentPage = 1;
+  renderView();
 }
 
 function init() {
@@ -571,8 +819,6 @@ function init() {
     "requesterSelect",
     "minBonusInput",
     "maxBonusInput",
-    "minSizeInput",
-    "maxSizeInput",
     "fromDateInput",
     "toDateInput",
   ];
@@ -580,8 +826,12 @@ function init() {
   for (const id of filterInputs) {
     const el = document.getElementById(id);
     if (el) {
-      el.addEventListener("input", renderTableBody);
-      el.addEventListener("change", renderTableBody);
+      const onFilterChange = () => {
+        currentPage = 1;
+        renderView();
+      };
+      el.addEventListener("input", onFilterChange);
+      el.addEventListener("change", onFilterChange);
     }
   }
 
@@ -593,6 +843,68 @@ function init() {
   const refreshBtn = document.getElementById("refreshBtn");
   if (refreshBtn) {
     refreshBtn.addEventListener("click", handleRefreshClick);
+  }
+
+  const tableViewBtn = document.getElementById("tableViewBtn");
+  const gridViewBtn = document.getElementById("gridViewBtn");
+
+  if (tableViewBtn) {
+    tableViewBtn.addEventListener("click", () => {
+      currentView = "table";
+      tableViewBtn.classList.add("active");
+      tableViewBtn.setAttribute("aria-pressed", "true");
+      if (gridViewBtn) {
+        gridViewBtn.classList.remove("active");
+        gridViewBtn.setAttribute("aria-pressed", "false");
+      }
+      renderView();
+    });
+  }
+
+  if (gridViewBtn) {
+    gridViewBtn.addEventListener("click", () => {
+      currentView = "grid";
+      gridViewBtn.classList.add("active");
+      gridViewBtn.setAttribute("aria-pressed", "true");
+      if (tableViewBtn) {
+        tableViewBtn.classList.remove("active");
+        tableViewBtn.setAttribute("aria-pressed", "false");
+      }
+      renderView();
+    });
+  }
+
+  const pageSizeSelect = document.getElementById("pageSizeSelect");
+  if (pageSizeSelect) {
+    pageSizeSelect.addEventListener("change", (e) => {
+      currentPageSize =
+        e.target.value === "all" ? "all" : Number(e.target.value);
+      currentPage = 1;
+      renderView();
+    });
+  }
+
+  const prevPageBtn = document.getElementById("prevPageBtn");
+  if (prevPageBtn) {
+    prevPageBtn.addEventListener("click", () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderView();
+      }
+    });
+  }
+
+  const nextPageBtn = document.getElementById("nextPageBtn");
+  if (nextPageBtn) {
+    nextPageBtn.addEventListener("click", () => {
+      currentPage++;
+      renderView();
+    });
+  }
+
+  const sortSelect = document.getElementById("sortSelect");
+  if (sortSelect) {
+    sortSelect.addEventListener("change", handleSortChange);
   }
 
   loadData();

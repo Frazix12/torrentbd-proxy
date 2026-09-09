@@ -1,6 +1,8 @@
 services:
   torrentbd-proxy:
+    container_name: torrentbd-proxy
     build: .
+    init: true
     ports:
       - "6950:6950"
     env_file: .env

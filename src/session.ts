@@ -81,7 +81,7 @@ async function solveTurnstileUntilResolved(
           box &&
           box.width > 0 &&
           box.height > 0 &&
-          now - lastClickTime > 4000
+          now - lastClickTime > 1500
         ) {
           lastClickTime = now;
           console.log(
@@ -97,7 +97,7 @@ async function solveTurnstileUntilResolved(
         // Frame may be re-rendering or navigating
       }
     }
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 500));
   }
   return isTargetResolved();
 }
@@ -281,7 +281,16 @@ async function syncSession(): Promise<void> {
     runtimeStatus.record("error", `[session] Error: ${err}`);
     throw err;
   } finally {
-    await context.close();
+    try {
+      await Promise.race([
+        context.close(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("context.close() timeout")), 5000),
+        ),
+      ]);
+    } catch (closeErr) {
+      console.error("[session] Failed to close context cleanly:", closeErr);
+    }
   }
 }
 
