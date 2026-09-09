@@ -175,6 +175,7 @@ export function renderDashboard(): string {
     <header>
       <h1>TorrentBD Proxy</h1>
       <div style="display: flex; gap: 10px; align-items: center;">
+        <a href="/reseed" class="test-btn" style="text-decoration: none;">Reseed Requests</a>
         <button id="testBtn" onclick="runManualTest()" class="test-btn">Run Tests Now</button>
         <div id="statusBadge" class="status-badge">Checking...</div>
       </div>

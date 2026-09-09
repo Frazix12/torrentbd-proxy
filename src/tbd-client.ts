@@ -134,6 +134,47 @@ export async function downloadTorrent(
   return res;
 }
 
+export async function fetchReseedPage(
+  url = `${BASE}/reseed-requests.php`,
+  attempt = 0,
+): Promise<string> {
+  let target: URL;
+  try {
+    target = new URL(url, BASE);
+    const allowedOrigin = new URL(BASE).origin;
+    if (
+      target.origin !== allowedOrigin ||
+      target.pathname !== "/reseed-requests.php"
+    ) {
+      throw new Error("Unexpected origin or path");
+    }
+  } catch {
+    throw new Error("Invalid reseed page URL");
+  }
+
+  const headers = await getSessionHeaders();
+  // pi-lens-ignore: ts-ssrf -- target is allowlisted to TorrentBD origin and exact reseed path above.
+  const response = await fetch(target.href, {
+    method: "GET",
+    headers: { ...headers, Referer: `${BASE}/reseed-requests.php` },
+    redirect: "follow",
+  });
+  const html = await response.text();
+  const challenged = isCloudflareChallenge(html, response.status);
+
+  if ((isLoginRedirect(html, response.url) || challenged) && attempt === 0) {
+    invalidateSession();
+    return fetchReseedPage(target.href, 1);
+  }
+  if (challenged) {
+    throw new Error(`Cloudflare challenge blocked reseed page (HTTP ${response.status})`);
+  }
+  if (!response.ok || isLoginRedirect(html, response.url)) {
+    throw new Error(`Reseed page failed: HTTP ${response.status}`);
+  }
+  return html;
+}
+
 export async function checkDownloadConnectivity(
   id: string,
 ): Promise<{ ok: boolean; status: number; latencyMs: number; error?: string }> {
