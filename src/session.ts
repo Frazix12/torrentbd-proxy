@@ -184,21 +184,25 @@ async function syncSession(): Promise<void> {
       timeout: 60000,
     });
     // Handle Cloudflare Turnstile until #username is ready
-    await solveTurnstileUntilResolved(
+    const usernameVisible = await solveTurnstileUntilResolved(
       page,
       async () => {
-        const el = await page.$("#username");
-        if (!el) return false;
         try {
+          const el = await page.$("#username");
+          if (!el) return false;
           return await el.isVisible();
         } catch {
+          // Execution context destroyed mid-navigation — treat as not resolved yet
           return false;
         }
       },
       45000,
     );
-    // Wait for form readiness
-    await page.waitForSelector("#username", { timeout: 30000 });
+    if (!usernameVisible) {
+      throw new Error(
+        "[session] Login form (#username) did not appear after 45s — Turnstile may be blocking",
+      );
+    }
     // Ensure Google reCAPTCHA v3 script is loaded and ready
     await page.waitForFunction(
       () => {
@@ -289,7 +293,7 @@ async function syncSession(): Promise<void> {
         ),
       ]);
     } catch (closeErr) {
-      console.error("[session] Failed to close context cleanly:", closeErr);
+      console.warn("[session] Failed to close context cleanly:", closeErr);
     }
   }
 }
