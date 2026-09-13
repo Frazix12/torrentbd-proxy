@@ -120,7 +120,7 @@ async function syncSession(): Promise<void> {
     const page = context.pages()[0] || (await context.newPage());
     const userAgent = await page.evaluate(() => navigator.userAgent);
 
-    const storedCookies = await context.cookies();
+    const storedCookies = await context.cookies([config.tbdBaseUrl]);
     if (!forceLogin && shouldReuseStoredCookies(storedCookies, forceLogin)) {
       runtimeStatus.record(
         "info",
