@@ -911,6 +911,76 @@ function init() {
 
   // Periodic reload every 30 seconds
   setInterval(loadData, 30000);
+
+  // Load history section (once — user expands the <details> to see it)
+  loadHistory();
+}
+
+/**
+ * Loads recently fulfilled/removed requests into the #historyList section.
+ */
+async function loadHistory() {
+  const container = document.getElementById("historyList");
+  const countEl = document.getElementById("historyCount");
+  if (!container) return;
+  try {
+    const res = await fetch("/reseed-history");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const rows = Array.isArray(data.requests) ? data.requests : [];
+    if (countEl) countEl.textContent = `(${rows.length})`;
+    if (rows.length === 0) {
+      container.innerHTML = `<p style="color:var(--muted);">No fulfilled requests yet.</p>`;
+      return;
+    }
+    const table = document.createElement("table");
+    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;";
+    const thead = document.createElement("thead");
+    thead.innerHTML = `<tr style="text-align:left;border-bottom:1px solid var(--border);">
+      <th style="padding:6px 8px;">Title</th>
+      <th style="padding:6px 8px;">Category</th>
+      <th style="padding:6px 8px;">Removed</th>
+    </tr>`;
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid var(--border)";
+      const titleTd = document.createElement("td");
+      titleTd.style.cssText = "padding:6px 8px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      if (row.detailsUrl) {
+        const a = document.createElement("a");
+        a.href = row.detailsUrl;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = row.title || row.torrentId;
+        a.style.color = "var(--accent)";
+        titleTd.appendChild(a);
+      } else {
+        titleTd.textContent = row.title || row.torrentId;
+      }
+      const catTd = document.createElement("td");
+      catTd.style.padding = "6px 8px";
+      catTd.textContent = row.category || "—";
+      const removedTd = document.createElement("td");
+      removedTd.style.cssText = "padding:6px 8px;color:var(--muted);white-space:nowrap;";
+      removedTd.textContent = row.removedAt ? new Date(row.removedAt).toLocaleDateString() : "—";
+      tr.appendChild(titleTd);
+      tr.appendChild(catTd);
+      tr.appendChild(removedTd);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    container.innerHTML = "";
+    container.appendChild(table);
+  } catch (err) {
+    if (container) {
+      const p = document.createElement("p");
+      p.style.color = "var(--red)";
+      p.textContent = `Failed to load history: ${err}`;
+      container.replaceChildren(p);
+    }
+  }
 }
 
 if (typeof document !== "undefined") {

@@ -7,9 +7,10 @@ import type { Frame, Page } from "playwright-core";
 import { TOTP } from "otpauth";
 import { config } from "./config";
 import { runtimeStatus } from "./status";
+import { notify } from "./notify";
 
 interface Session {
-  cookies: Array<{ name: string; value: string }>;
+  cookies: Array<{ name: string; value: string; expires?: number }>;
   userAgent: string;
 }
 
@@ -299,6 +300,23 @@ async function syncSession(): Promise<void> {
 }
 
 export async function getSessionHeaders(): Promise<Record<string, string>> {
+  // Proactive expiry: re-login if any auth cookie expires within 5 minutes
+  if (session) {
+    const nowSec = Date.now() / 1000;
+    const expiringSoon = session.cookies.some(
+      (c) =>
+        (c.name === "user" || c.name === "x_auth") &&
+        c.expires !== undefined &&
+        c.expires > 0 &&
+        c.expires - nowSec < 300,
+    );
+    if (expiringSoon) {
+      console.log("[session] Auth cookie expiring soon — proactively re-authenticating.");
+      runtimeStatus.record("warn", "Auth cookie expiring soon — proactively re-authenticating.");
+      invalidateSession();
+    }
+  }
+
   if (!session) {
     if (!sessionSyncInProgress) {
       sessionSyncInProgress = syncSession().finally(() => {
@@ -322,6 +340,7 @@ export function invalidateSession(): void {
     "warn",
     "Session invalidated — will re-login on next request.",
   );
+  notify("[TorrentBD] Session expired — re-login triggered");
   session = null;
   forceLogin = true;
 }

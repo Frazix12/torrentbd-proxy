@@ -95,19 +95,46 @@ describe("reseed store", () => {
     store.close();
   });
 
-  it("preserves previous snapshot if replacement fails", () => {
+  it("deduplicates within a single snapshot (last occurrence wins)", () => {
     const store = createReseedStore(":memory:");
     store.replaceSnapshot([first], "2026-09-08T00:00:00Z");
-    expect(() => {
-      store.replaceSnapshot(
-        [
-          { ...first, torrentId: "99", title: "Ninety-nine" },
-          { ...first, torrentId: "99", title: "Duplicate" },
-        ],
-        "2026-09-08T00:05:00Z",
-      );
-    }).toThrow();
-    expect(store.list().map((item) => item.torrentId)).toEqual(["42"]);
+    // Duplicate IDs in one batch: UPSERT keeps the row, no throw
+    store.replaceSnapshot(
+      [
+        { ...first, torrentId: "99", title: "Ninety-nine" },
+        { ...first, torrentId: "99", title: "Duplicate" },
+      ],
+      "2026-09-08T00:05:00Z",
+    );
+    // ID 42 should now be soft-deleted; ID 99 should be active
+    expect(store.list().map((item) => item.torrentId)).toEqual(["99"]);
+    store.close();
+  });
+
+  it("soft-deletes removed requests and surfaces them in listHistory", () => {
+    const store = createReseedStore(":memory:");
+    store.replaceSnapshot(
+      [first, { ...first, torrentId: "43", title: "Two" }],
+      "2026-09-08T00:00:00Z",
+    );
+    // Second sync drops torrent 43
+    store.replaceSnapshot([first], "2026-09-08T00:05:00Z");
+    expect(store.list().map((r) => r.torrentId)).toEqual(["42"]);
+    const history = store.listHistory();
+    expect(history.map((r) => r.torrentId)).toEqual(["43"]);
+    expect(history[0].removedAt).toBeTruthy();
+    store.close();
+  });
+
+  it("re-appears a previously removed request when it comes back", () => {
+    const store = createReseedStore(":memory:");
+    store.replaceSnapshot([first], "2026-09-08T00:00:00Z");
+    store.replaceSnapshot([], "2026-09-08T00:05:00Z"); // remove it
+    expect(store.list()).toHaveLength(0);
+    expect(store.listHistory()).toHaveLength(1);
+    store.replaceSnapshot([first], "2026-09-08T00:10:00Z"); // comes back
+    expect(store.list()).toHaveLength(1);
+    expect(store.list()[0].removedAt).toBeNull();
     store.close();
   });
 

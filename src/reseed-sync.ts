@@ -5,6 +5,7 @@
 import { parseReseedPage, type ParsedReseedPage, type ReseedRequestInput } from "./reseed-parser";
 import type { ReseedStore } from "./reseed-store";
 import { runtimeStatus, type StatusLevel } from "./status";
+import { notify } from "./notify";
 
 export interface ReseedSyncDeps {
   baseUrl?: string;
@@ -68,6 +69,7 @@ export async function syncReseedRequests(deps: ReseedSyncDeps): Promise<number> 
     const errorMsg = err instanceof Error ? err.message : String(err);
     deps.store.markFailed(now(), errorMsg);
     record("error", `[reseed-sync] Error: ${errorMsg}`);
+    notify(`[TorrentBD] Reseed sync failed: ${errorMsg}`);
     throw err;
   }
 }

@@ -10,6 +10,7 @@ import {
 } from "./tbd-client";
 import { parseSearchResults, parseBrowseResults } from "./parser";
 import { buildCapsXml } from "./torznab";
+import { notify } from "./notify";
 
 export async function runAllFeatureChecks(): Promise<void> {
   console.log("[health-check] Starting automated feature verification...");
@@ -37,6 +38,7 @@ export async function runAllFeatureChecks(): Promise<void> {
       lastCheckedAt: new Date().toISOString(),
       details: String(err),
     });
+    notify(`[TorrentBD] Feature "session" is failing: ${err}`);
   }
 
   // 2. Torznab Capabilities
@@ -84,6 +86,7 @@ export async function runAllFeatureChecks(): Promise<void> {
       lastCheckedAt: new Date().toISOString(),
       details: String(err),
     });
+    notify(`[TorrentBD] Feature "browse" is failing: ${err}`);
   }
 
   // 4. Torrent Search
@@ -108,6 +111,7 @@ export async function runAllFeatureChecks(): Promise<void> {
       lastCheckedAt: new Date().toISOString(),
       details: String(err),
     });
+    notify(`[TorrentBD] Feature "search" is failing: ${err}`);
   }
 
   // 5. Download Connectivity (Lightweight HEAD check)
@@ -133,6 +137,7 @@ export async function runAllFeatureChecks(): Promise<void> {
       lastCheckedAt: new Date().toISOString(),
       details: String(err),
     });
+    notify(`[TorrentBD] Feature "download" is failing: ${err}`);
   }
 
   console.log("[health-check] Automated feature verification complete.");

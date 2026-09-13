@@ -24,6 +24,7 @@ import { runtimeStatus } from "./status";
 import { renderDashboard } from "./dashboard";
 import { renderReseedDashboard } from "./reseed-dashboard";
 import { runAllFeatureChecks, startPeriodicHealthChecks } from "./health-check";
+import { rateLimit } from "./rate-limit";
 
 const XML_CT = { "Content-Type": "application/xml; charset=utf-8" };
 
@@ -121,6 +122,11 @@ function createApp(deps?: AppDeps): Hono {
     return c.json({ requests, count, totalSeedBonus, sync });
   });
 
+  app.get("/reseed-history", (c) => {
+    const store = getStore();
+    return c.json({ requests: store.listHistory() });
+  });
+
   app.post("/reseed-refresh", (c) => {
     const synchronizer = getSynchronizer();
     const store = getStore();
@@ -172,7 +178,6 @@ function createApp(deps?: AppDeps): Hono {
 
     const SEARCH_TYPES = ["search", "tvsearch", "movie", "music", "book"];
     if (t && SEARCH_TYPES.includes(t)) {
-      const query = c.req.query("q") ?? "";
       const cats = c.req.query("cat");
       // Torznab offset is 0-based per 100 items; TBD page is 1-based
       const offset = parseInt(c.req.query("offset") ?? "0", 10);
@@ -189,6 +194,19 @@ function createApp(deps?: AppDeps): Hono {
       const proto = c.req.header("x-forwarded-proto") ?? "http";
       const proxyBase = `${proto}://${host}`;
 
+      // Rate limit: 30 req/60s per IP
+      const ip = c.req.header("x-forwarded-for") ?? "unknown";
+      if (!rateLimit(ip)) {
+        return c.text(buildErrorXml(429, "Rate limit exceeded"), 429, XML_CT);
+      }
+
+      // imdbid fallback: use as query when q is empty
+      const query =
+        c.req.query("q") ||
+        (c.req.query("imdbid") ? `imdbid:${c.req.query("imdbid")}` : "");
+      // ponytail: imdbid used as literal fallback query; add TMDB/OMDB lookup
+      // if hit rate on imdbid-only searches matters
+
       const cacheKey = `${proxyBase}|${query}|${cats ?? ""}|${tbdPage}`;
       const cached = cache.get(cacheKey);
       if (cached) return c.text(cached, 200, XML_CT);
@@ -200,9 +218,16 @@ function createApp(deps?: AppDeps): Hono {
           ? await searchTorrents(query, groups, tbdPage)
           : await browseTorrents(tbdPage);
 
-        const items = useSearch
-          ? parseSearchResults(html)
-          : parseBrowseResults(html);
+        // Deduplicate by id, then enforce declared caps limit of 100
+        const seen = new Set<string>();
+        const items = (useSearch ? parseSearchResults(html) : parseBrowseResults(html))
+          .filter((item) => {
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
+            return true;
+          })
+          .slice(0, 100);
+
         const xml = buildSearchXml(items, proxyBase, config.proxyApiKey);
 
         cache.set(cacheKey, xml);
@@ -236,8 +261,16 @@ const app = createApp();
 
 console.log(`[torrentbd-proxy] Starting on port ${config.port}`);
 
+function startPeriodicReseedSync(intervalHours: number): void {
+  const ms = Math.max(1, intervalHours) * 60 * 60 * 1000;
+  // First sync 30s after startup — lets the session warm up first
+  setTimeout(() => reseedSynchronizer.start(), 30_000);
+  setInterval(() => reseedSynchronizer.start(), ms);
+}
+
 if (process.env.NODE_ENV !== "test") {
   startPeriodicHealthChecks(config.healthCheckIntervalMinutes);
+  startPeriodicReseedSync(config.reseedSyncIntervalHours);
   reseedSynchronizer.startPolling(300_000);
 }
 
@@ -249,6 +282,7 @@ export {
   torrentDownloadResponse,
   reseedStore,
   reseedSynchronizer,
+  startPeriodicReseedSync,
 };
 export default {
   port: config.port,

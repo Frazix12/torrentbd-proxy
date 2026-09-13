@@ -525,6 +525,15 @@ export function renderReseedDashboard(): string {
     </div>
   </div>
 
+  <div class="container" style="margin-top: 32px;">
+    <details id="historySection">
+      <summary style="cursor:pointer; font-size:18px; font-weight:600; padding: 12px 0; color: var(--text);">Recently Fulfilled / Removed <span id="historyCount" style="font-size:13px; color:var(--muted); font-weight:400;"></span></summary>
+      <div id="historyList" style="margin-top:12px; overflow-x:auto;">
+        <p style="color:var(--muted);">Loading…</p>
+      </div>
+    </details>
+  </div>
+
   <script type="module" src="/reseed-ui.js"></script>
 </body>
 </html>`;

@@ -24,9 +24,18 @@ export const config = {
   healthCheckIntervalMinutes: Number(
     process.env.HEALTH_CHECK_INTERVAL_MINUTES ?? "30",
   ),
+  reseedSyncIntervalHours: Number(
+    process.env.RESEED_SYNC_INTERVAL_HOURS ?? "6",
+  ),
   reseedDbPath:
     process.env.RESEED_DB_PATH ??
     (process.env.NODE_ENV === "test"
       ? ":memory:"
       : `${cloakProfileDir}/reseed.sqlite`),
+  cacheDbPath:
+    process.env.CACHE_DB_PATH ??
+    (process.env.NODE_ENV === "test"
+      ? ":memory:"
+      : `${cloakProfileDir}/cache.sqlite`),
+  notifyWebhookUrl: process.env.NOTIFY_WEBHOOK_URL ?? "",
 };
