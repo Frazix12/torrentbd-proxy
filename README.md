@@ -1,105 +1,115 @@
 # TorrentBD Torznab Proxy
 
-A Dockerized Torznab proxy for TorrentBD using Bun and CloakBrowser. It handles TorrentBD login, TOTP authentication, search, torrent downloads, and persistent browser sessions.
+> A Dockerized [Torznab](https://torznab.github.io/spec-1.3-draft/) proxy for **TorrentBD** — handles login, TOTP 2FA, Cloudflare bypass, search, downloads, and persistent sessions.
 
-> **⚠️ Disclaimer**: This project is strictly for **educational and personal research purposes only**. The authors and contributors are **not accountable or liable** for any account bans, suspensions, warnings, IP blocks, or punitive actions taken by TorrentBD or any third parties. Use entirely at your own risk.
+> ⚠️ **Disclaimer:** For personal and educational use only. The authors are not liable for account bans, IP blocks, or any action taken by TorrentBD or third parties. Use at your own risk.
 
-## Setup
+---
 
-1. Create the environment file:
+## Quick Start
 
-   ```bash
-   cp .env.example .env
-   ```
+**1. Configure**
 
-2. Set the required values in `.env`:
+```bash
+cp .env.example .env
+```
 
-   - `TBD_USERNAME`
-   - `TBD_PASSWORD`
-   - `TBD_TOTP_SECRET`
-   - `PROXY_API_KEY`
+Edit `.env` and fill in your credentials:
 
-3. Start the service:
+| Variable | Description |
+|---|---|
+| `TBD_USERNAME` | TorrentBD account email |
+| `TBD_PASSWORD` | TorrentBD password |
+| `TBD_TOTP_SECRET` | Base32 TOTP secret (from 2FA setup) |
+| `PROXY_API_KEY` | Any secret string — used to authenticate Prowlarr |
 
-   ```bash
-   docker compose up -d --build
-   ```
+**2. Build & run**
 
-The service listens on port **6950**.
+```bash
+docker compose up -d --build
+```
+
+The proxy starts on **port 6950**. On first run it logs in and saves the session — subsequent restarts reuse stored cookies and skip login entirely.
+
+---
+
+## Add to Prowlarr
+
+1. Go to **Prowlarr → Indexers → Add Indexer**
+2. Search for **Torznab** → select **Generic Torznab**
+3. Set:
+   - **URL:** `http://<your-host>:6950`
+   - **API Key:** the `PROXY_API_KEY` value from `.env`
+4. Click **Test** then **Save**
+
+> Replace `<your-host>` with your machine's LAN IP (e.g. `192.168.0.55`) or `localhost` if Prowlarr runs on the same machine.
+
+---
 
 ## Endpoints
 
-| Endpoint | Purpose |
-| --- | --- |
-| `http://<host>:6950/` | Read-only status dashboard |
-| `http://<host>:6950/status` | Runtime status JSON |
-| `http://<host>:6950/health` | Container health check |
-| `http://<host>:6950/reseed` | Reseed requests dashboard |
-| `http://<host>:6950/reseed-data` | Reseed snapshot data JSON |
-| `http://<host>:6950/reseed-refresh` | Trigger on-demand reseed synchronization |
-| `http://<host>:6950/reseed-download?id=<id>` | Proxied torrent download for reseed requests |
-| `http://<host>:6950/api?t=caps&apikey=<key>` | Torznab capabilities |
-| `http://<host>:6950/api?t=search&q=<query>&apikey=<key>` | Torrent search |
-| `http://<host>:6950/download?id=<id>&apikey=<key>` | Torrent download |
+| Endpoint | Description |
+|---|---|
+| `GET /` | Status dashboard |
+| `GET /status` | Runtime status JSON |
+| `GET /health` | Docker health check |
+| `GET /reseed` | Reseed requests dashboard |
+| `GET /reseed-data` | Reseed snapshot JSON |
+| `POST /reseed-refresh` | Trigger manual reseed sync |
+| `GET /reseed-download?id=<id>` | Proxied torrent download (no API key needed) |
+| `GET /api?t=caps&apikey=<key>` | Torznab capabilities |
+| `GET /api?t=search&q=<query>&apikey=<key>` | Search torrents |
+| `GET /download?id=<id>&apikey=<key>` | Download torrent |
 
-## Prowlarr
-
-Add a **Generic Torznab** indexer with:
-
-- URL: `http://<host>:6950`
-- API key: the `PROXY_API_KEY` value from `.env`
+---
 
 ## Persistence
 
-The `cloak-profile` Docker volume stores browser cookies and session state as well as the SQLite database for reseed requests (`/data/cloak-profile/reseed.sqlite`). Normal container recreation preserves both the authenticated session and cached reseed data:
+The `cloak-profile` Docker volume stores browser cookies, session state, and the reseed SQLite database. Sessions survive container restarts automatically.
 
 ```bash
-docker compose down
-docker compose up -d
+# Safe — preserves session and data
+docker compose down && docker compose up -d
+
+# Destructive — wipes profile and forces re-login
+docker compose down -v
 ```
 
-Do not run `docker compose down -v` unless you intend to erase the browser profile and force a new login.
+---
 
 ## Reseed Requests
 
-The proxy features an authenticated background synchronizer and a dedicated LAN dashboard for TorrentBD reseed requests:
+The `/reseed` dashboard syncs TorrentBD reseed requests in the background:
 
-- **Synchronization**: Automatically syncs upon proxy startup and repeats every 5 minutes (`300,000 ms`). Manual on-demand sync can be triggered from the dashboard or via `POST /reseed-refresh`. Concurrency guards prevent overlapping sync operations.
-- **Multi-Page Scraping & Atomic Deletion**: Traverses all pagination pages to collect active requests. If all pages parse successfully, the snapshot is updated in a single atomic SQLite transaction. Requests that have disappeared upstream are immediately deleted.
-- **Last-Good Snapshot**: If synchronization fails mid-process (e.g. network interruption, Cloudflare challenge, or upstream error), the previous snapshot is retained untouched. The failure status and error details are tracked and shown on the dashboard.
-- **Local SQLite Persistence**: Reseed requests and sync metadata are persisted locally using Bun's native SQLite (`bun:sqlite`). By default, the database is stored at `/data/cloak-profile/reseed.sqlite` within the persistent `cloak-profile` Docker volume, configurable via `RESEED_DB_PATH`.
-- **LAN Dashboard & Secure Download**: The `/reseed` page provides responsive, client-side search and filtering (by category, bonus, size, requester, date range, and text search) with sortable columns. Torrent downloads use `/reseed-download?id=<id>`, allowing downloads on the local network without exposing the proxy API key.
+- Syncs on startup, then every **5 minutes**
+- Scrapes all pages atomically — previous snapshot kept on failure
+- Client-side filtering by category, size, bonus, requester, and date
+- Download via `/reseed-download?id=<id>` — no API key exposed on LAN
+
+---
 
 ## Operations
 
 ```bash
-# Follow logs
-docker compose logs -f
-
-# Check service state
-docker compose ps
-
-# Restart
-docker compose restart
-
-# Stop
-docker compose down
+docker compose logs -f        # tail logs
+docker compose ps             # check status
+docker compose restart        # restart
+docker compose down           # stop (keeps volume)
 ```
 
-If a fresh profile remains on a Cloudflare challenge, set a current `CLOAKBROWSER_LICENSE_KEY` in `.env` and rebuild. The bundled unlicensed browser is an older release.
+> If the browser gets stuck on a Cloudflare challenge, set a `CLOAKBROWSER_LICENSE_KEY` in `.env` and rebuild — the bundled unlicensed binary is an older release.
 
-## Development Checks
+---
+
+## Development
 
 ```bash
 bun test
 bunx tsc --noEmit
-docker compose config --quiet
 ```
 
-## License & Fair Use
+---
 
-This software is released under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](LICENSE) license.
+## License
 
-- **Free for Personal & Educational Use**: You are free to run, modify, and learn from this project.
-- **No Commercial Use**: Any commercial use, monetization, or paid distribution is strictly prohibited.
-- **ShareAlike / Open Source for Forks**: Any forks, derivatives, or redistributions must remain open source under the exact same license terms.
+[CC BY-NC-SA 4.0](LICENSE) — free for personal and educational use, no commercial use, forks must stay open source under the same terms.
