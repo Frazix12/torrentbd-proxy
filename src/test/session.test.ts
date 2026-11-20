@@ -23,6 +23,9 @@ describe("stored session selection", () => {
     expect(hasSessionCookie([{ name: "x_auth", value: "tokenxyz" }])).toBe(
       true,
     );
+    expect(hasSessionCookie([{ name: "ts_argon", value: "tokenxyz" }])).toBe(
+      true,
+    );
   });
 
   it("reuses stored cookies only when not forced to re-login", () => {
@@ -42,9 +45,10 @@ describe("stored session selection", () => {
     expect(
       getSessionCookieNames([
         { name: "cf_clearance", value: "challenge" },
+        { name: "ts_argon", value: "expired" },
         { name: "user", value: "expired" },
         { name: "x_auth", value: "expired" },
       ]),
-    ).toEqual(["user", "x_auth"]);
+    ).toEqual(["ts_argon", "user", "x_auth"]);
   });
 });

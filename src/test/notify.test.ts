@@ -9,10 +9,7 @@ const capturedFetches: { url: string; body: string; ct: string }[] = [];
 
 // Intercept fetch globally before any imports
 const originalFetch = global.fetch;
-global.fetch = (async (
-  url: string | Request | URL,
-  init?: RequestInit,
-) => {
+global.fetch = (async (url: string | Request | URL, init?: RequestInit) => {
   capturedFetches.push({
     url: String(url instanceof Request ? url.url : url),
     body: String(init?.body ?? ""),

@@ -121,7 +121,9 @@ export function createReseedStore(path: string): ReseedStore {
 
   // Migration: add removed_at to existing DBs that predate soft-delete
   try {
-    db.run("ALTER TABLE reseed_requests ADD COLUMN removed_at TEXT DEFAULT NULL");
+    db.run(
+      "ALTER TABLE reseed_requests ADD COLUMN removed_at TEXT DEFAULT NULL",
+    );
   } catch {
     // Column already exists — safe to ignore
   }

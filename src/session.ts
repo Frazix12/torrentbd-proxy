@@ -16,6 +16,10 @@ interface Session {
 
 const CLOAK_FINGERPRINT = "12345";
 
+// TorrentBD's real auth cookie is `ts_argon`. `user`/`x_auth` are kept for
+// compatibility with older site versions and profiles.
+export const SESSION_COOKIE_NAMES = ["ts_argon", "user", "x_auth"] as const;
+
 let session: Session | null = null;
 let forceLogin = false;
 let sessionSyncInProgress: Promise<void> | null = null;
@@ -24,7 +28,9 @@ export function hasSessionCookie(
   cookies: Array<{ name: string; value: string }>,
 ): boolean {
   return cookies.some(
-    (c) => (c.name === "user" || c.name === "x_auth") && Boolean(c.value),
+    (c) =>
+      (SESSION_COOKIE_NAMES as readonly string[]).includes(c.name) &&
+      Boolean(c.value),
   );
 }
 
@@ -32,7 +38,9 @@ export function getSessionCookieNames(
   cookies: Array<{ name: string; value?: string }>,
 ): string[] {
   return cookies
-    .filter((cookie) => cookie.name === "user" || cookie.name === "x_auth")
+    .filter((cookie) =>
+      (SESSION_COOKIE_NAMES as readonly string[]).includes(cookie.name),
+    )
     .map((cookie) => cookie.name);
 }
 
@@ -60,6 +68,22 @@ function cookiesToHeader(
   return cookies.map((c) => `${c.name}=${c.value}`).join("; ");
 }
 
+const TURNSTILE_FRAME_URLS = ["challenges.cloudflare.com", "challenge-platform"];
+const MIN_CLICK_INTERVAL_MS = 2500;
+
+async function turnstileResponseSolved(page: Page): Promise<boolean> {
+  try {
+    return await page.evaluate(() => {
+      const fields = document.querySelectorAll<HTMLInputElement>(
+        'input[name="cf-turnstile-response"]',
+      );
+      return Array.from(fields).some((field) => Boolean(field.value));
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function solveTurnstileUntilResolved(
   page: Page,
   isTargetResolved: () => Promise<boolean>,
@@ -67,37 +91,107 @@ async function solveTurnstileUntilResolved(
 ): Promise<boolean> {
   const start = Date.now();
   let lastClickTime = 0;
+  let failedClicks = 0;
+  let reloads = 0;
+  let loggedFrameUrl = "";
+
   while (Date.now() - start < maxWaitMs) {
     if (await isTargetResolved()) return true;
+    if (await turnstileResponseSolved(page)) {
+      console.log("[session] Cloudflare Turnstile challenge solved.");
+      runtimeStatus.record("info", "Cloudflare Turnstile challenge solved.");
+      return true;
+    }
 
     const frame = page
       .frames()
-      .find((f: Frame) => f.url().includes("challenges.cloudflare.com"));
+      .find((f: Frame) =>
+        TURNSTILE_FRAME_URLS.some((needle) => f.url().includes(needle)),
+      );
+
     if (frame) {
-      try {
-        const frameEl = await frame.frameElement();
-        const box = await frameEl.boundingBox();
-        const now = Date.now();
-        if (
-          box &&
-          box.width > 0 &&
-          box.height > 0 &&
-          now - lastClickTime > 1500
-        ) {
-          lastClickTime = now;
+      const frameUrl = frame.url();
+      if (frameUrl !== loggedFrameUrl) {
+        loggedFrameUrl = frameUrl;
+        console.log(
+          "[session] Cloudflare Turnstile challenge detected — attempting to solve...",
+        );
+        runtimeStatus.record(
+          "info",
+          "Cloudflare Turnstile challenge detected — attempting to solve...",
+        );
+      }
+
+      const now = Date.now();
+      if (now - lastClickTime > MIN_CLICK_INTERVAL_MS) {
+        let clicked = false;
+
+        // Prefer clicking the real checkbox inside the challenge iframe.
+        for (const selector of [
+          'input[type="checkbox"]',
+          ".cf-turnstile",
+          '[role="checkbox"]',
+        ]) {
+          try {
+            const locator = frame.locator(selector).first();
+            if ((await locator.count()) === 0) continue;
+            await locator.click({ timeout: 1500, force: true });
+            clicked = true;
+            break;
+          } catch {
+            // Selector did not match or element was not clickable — try the next one.
+          }
+        }
+
+        // Fall back to a click near the checkbox inside the widget bounding box.
+        if (!clicked) {
+          try {
+            const frameEl = await frame.frameElement();
+            const box = await frameEl.boundingBox();
+            if (box && box.width > 0 && box.height > 0) {
+              await page.mouse.click(box.x + 14, box.y + box.height / 2);
+              clicked = true;
+            }
+          } catch {
+            // Frame may be re-rendering or navigating.
+          }
+        }
+
+        if (clicked) {
+          lastClickTime = Date.now();
+          failedClicks += 1;
           console.log(
-            "[session] Cloudflare Turnstile detected, clicking verification box...",
+            `[session] Clicked Turnstile verification box (attempt ${failedClicks})...`,
           );
           runtimeStatus.record(
             "info",
-            "Cloudflare Turnstile detected, clicking verification box...",
+            `Clicked Turnstile verification box (attempt ${failedClicks})...`,
           );
-          await page.mouse.click(box.x + 30, box.y + box.height / 2);
         }
-      } catch {
-        // Frame may be re-rendering or navigating
       }
     }
+
+    // If repeated clicks make no progress, reload to get a fresh challenge.
+    if (failedClicks >= 6 && reloads < 2) {
+      reloads += 1;
+      failedClicks = 0;
+      lastClickTime = Date.now();
+      console.log(
+        `[session] Turnstile not resolving — reloading challenge (${reloads}/2). ` +
+          "If this keeps happening, set a free CLOAKBROWSER_LICENSE_KEY in .env and rebuild " +
+          "to use the latest browser build that auto-solves challenges.",
+      );
+      runtimeStatus.record(
+        "warn",
+        `Turnstile not resolving — reloading challenge (${reloads}/2).`,
+      );
+      try {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 25000 });
+      } catch {
+        // Navigation may have been interrupted; keep looping.
+      }
+    }
+
     await new Promise((r) => setTimeout(r, 500));
   }
   return isTargetResolved();
@@ -213,6 +307,7 @@ async function syncSession(): Promise<void> {
         };
         return typeof win.grecaptcha?.execute === "function";
       },
+      null,
       { timeout: 30000 },
     );
 
@@ -231,6 +326,7 @@ async function syncSession(): Promise<void> {
         const otpContainer = document.getElementById("otp-container");
         return otpContainer && !otpContainer.classList.contains("hidden");
       },
+      null,
       { timeout: 30000 },
     );
 
@@ -255,6 +351,7 @@ async function syncSession(): Promise<void> {
             !!document.getElementById("error-message")?.innerText?.trim()
           );
         },
+        null,
         { timeout: 20000 },
       )
       .catch(() => {});
@@ -290,7 +387,7 @@ async function syncSession(): Promise<void> {
       await Promise.race([
         context.close(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("context.close() timeout")), 5000),
+          setTimeout(() => reject(new Error("context.close() timeout")), 10000),
         ),
       ]);
     } catch (closeErr) {
@@ -305,14 +402,19 @@ export async function getSessionHeaders(): Promise<Record<string, string>> {
     const nowSec = Date.now() / 1000;
     const expiringSoon = session.cookies.some(
       (c) =>
-        (c.name === "user" || c.name === "x_auth") &&
+        (SESSION_COOKIE_NAMES as readonly string[]).includes(c.name) &&
         c.expires !== undefined &&
         c.expires > 0 &&
         c.expires - nowSec < 300,
     );
     if (expiringSoon) {
-      console.log("[session] Auth cookie expiring soon — proactively re-authenticating.");
-      runtimeStatus.record("warn", "Auth cookie expiring soon — proactively re-authenticating.");
+      console.log(
+        "[session] Auth cookie expiring soon — proactively re-authenticating.",
+      );
+      runtimeStatus.record(
+        "warn",
+        "Auth cookie expiring soon — proactively re-authenticating.",
+      );
       invalidateSession();
     }
   }

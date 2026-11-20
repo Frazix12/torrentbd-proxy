@@ -134,7 +134,7 @@ docker compose restart        # restart (keeps session and cache)
 docker compose down           # stop (keeps volume)
 ```
 
-> If the browser gets stuck on a Cloudflare challenge, set a `CLOAKBROWSER_LICENSE_KEY` in `.env` and rebuild — the bundled unlicensed binary is an older release.
+> **Cloudflare / Turnstile challenges:** the default setup uses the bundled CloakBrowser 0.5.x browser, which works without a license key but ships an older Chromium build. The login flow now detects and clicks the Turnstile checkbox, verifies success via the `cf-turnstile-response` token, and reloads a stuck challenge automatically. If challenges still block login, grab a **free** key from <https://cloakbrowser.dev/free>, add `CLOAKBROWSER_LICENSE_KEY=...` to `.env`, and rebuild (`docker compose up -d --build`). With a key, CloakBrowser downloads the newest Chromium build that auto-solves Turnstile non-interactively and needs no manual clicking. Without a key, stay on the 0.5.x image/tag — newer CloakBrowser releases require a license even on the free tier and will fail to start in Docker without one.
 
 ---
 

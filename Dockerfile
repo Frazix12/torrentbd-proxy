@@ -1,6 +1,6 @@
-FROM oven/bun:1.3.14 AS bun
+FROM oven/bun:1.4.5 AS bun
 
-FROM cloakhq/cloakbrowser:0.5.10
+FROM cloakhq/cloakbrowser:0.5.12
 
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 

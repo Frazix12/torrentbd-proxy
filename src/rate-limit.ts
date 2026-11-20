@@ -10,14 +10,14 @@ const windows = new Map<string, number[]>();
  * Defaults: 30 requests per 60 seconds per IP.
  */
 export function rateLimit(
-  ip: string,
-  maxReqs = 30,
-  windowMs = 60_000,
+ ip: string,
+ maxReqs = 30,
+ windowMs = 60_000,
 ): boolean {
-  const now = Date.now();
-  const hits = (windows.get(ip) ?? []).filter((t) => now - t < windowMs);
-  if (hits.length >= maxReqs) return false;
-  hits.push(now);
-  windows.set(ip, hits);
-  return true;
+ const now = Date.now();
+ const hits = (windows.get(ip) ?? []).filter((t) => now - t < windowMs);
+ if (hits.length >= maxReqs) return false;
+ hits.push(now);
+ windows.set(ip, hits);
+ return true;
 }

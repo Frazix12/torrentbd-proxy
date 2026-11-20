@@ -947,7 +947,8 @@ async function loadHistory() {
       const tr = document.createElement("tr");
       tr.style.borderBottom = "1px solid var(--border)";
       const titleTd = document.createElement("td");
-      titleTd.style.cssText = "padding:6px 8px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      titleTd.style.cssText =
+        "padding:6px 8px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
       if (row.detailsUrl) {
         const a = document.createElement("a");
         a.href = row.detailsUrl;
@@ -963,8 +964,11 @@ async function loadHistory() {
       catTd.style.padding = "6px 8px";
       catTd.textContent = row.category || "—";
       const removedTd = document.createElement("td");
-      removedTd.style.cssText = "padding:6px 8px;color:var(--muted);white-space:nowrap;";
-      removedTd.textContent = row.removedAt ? new Date(row.removedAt).toLocaleDateString() : "—";
+      removedTd.style.cssText =
+        "padding:6px 8px;color:var(--muted);white-space:nowrap;";
+      removedTd.textContent = row.removedAt
+        ? new Date(row.removedAt).toLocaleDateString()
+        : "—";
       tr.appendChild(titleTd);
       tr.appendChild(catTd);
       tr.appendChild(removedTd);

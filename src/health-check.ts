@@ -2,7 +2,7 @@
 // Runs automated feature tests periodically and updates dashboard status.
 
 import { runtimeStatus } from "./status";
-import { getSessionHeaders } from "./session";
+import { getSessionHeaders, SESSION_COOKIE_NAMES } from "./session";
 import {
   searchTorrents,
   browseTorrents,
@@ -19,10 +19,10 @@ export async function runAllFeatureChecks(): Promise<void> {
   const sessionStart = Date.now();
   try {
     const headers = await getSessionHeaders();
-    if (
-      !headers.Cookie?.includes("user=") &&
-      !headers.Cookie?.includes("x_auth=")
-    ) {
+    const hasAuthCookie = SESSION_COOKIE_NAMES.some((name) =>
+      headers.Cookie?.includes(`${name}=`),
+    );
+    if (!hasAuthCookie) {
       throw new Error("Missing auth cookies in session");
     }
     runtimeStatus.setFeatureStatus("session", {

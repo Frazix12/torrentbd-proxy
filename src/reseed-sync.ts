@@ -2,7 +2,11 @@
 // Multi-page synchronizer for TorrentBD reseed requests.
 // Handles pagination, deduplication, error tracking, and concurrency guarding.
 
-import { parseReseedPage, type ParsedReseedPage, type ReseedRequestInput } from "./reseed-parser";
+import {
+  parseReseedPage,
+  type ParsedReseedPage,
+  type ReseedRequestInput,
+} from "./reseed-parser";
 import type { ReseedStore } from "./reseed-store";
 import { runtimeStatus, type StatusLevel } from "./status";
 import { notify } from "./notify";
@@ -27,13 +31,18 @@ async function defaultFetchPage(url?: string): Promise<string> {
   return fetchReseedPage(url);
 }
 
-export async function syncReseedRequests(deps: ReseedSyncDeps): Promise<number> {
-  const baseUrl = deps.baseUrl ?? (process.env.TBD_BASE_URL || "https://www.torrentbd.net");
+export async function syncReseedRequests(
+  deps: ReseedSyncDeps,
+): Promise<number> {
+  const baseUrl =
+    deps.baseUrl ?? (process.env.TBD_BASE_URL || "https://www.torrentbd.net");
   const fetchPage = deps.fetchPage ?? defaultFetchPage;
   const parsePage = deps.parsePage ?? parseReseedPage;
   const now = deps.now ?? (() => new Date().toISOString());
   const record =
-    deps.record ?? ((level: StatusLevel, message: string) => runtimeStatus.record(level, message));
+    deps.record ??
+    ((level: StatusLevel, message: string) =>
+      runtimeStatus.record(level, message));
 
   const startedAt = now();
   deps.store.markRunning(startedAt);
@@ -41,7 +50,8 @@ export async function syncReseedRequests(deps: ReseedSyncDeps): Promise<number> 
   try {
     const visited = new Set<string>();
     const requestsMap = new Map<string, ReseedRequestInput>();
-    let currentUrl: string | null = `${baseUrl.replace(/\/+$/, "")}/reseed-requests.php`;
+    let currentUrl: string | null =
+      `${baseUrl.replace(/\/+$/, "")}/reseed-requests.php`;
 
     while (currentUrl) {
       if (visited.has(currentUrl)) {
@@ -74,10 +84,14 @@ export async function syncReseedRequests(deps: ReseedSyncDeps): Promise<number> 
   }
 }
 
-export function createReseedSynchronizer(deps: ReseedSyncDeps): ReseedSynchronizer {
+export function createReseedSynchronizer(
+  deps: ReseedSyncDeps,
+): ReseedSynchronizer {
   let running = false;
   const record =
-    deps.record ?? ((level: StatusLevel, message: string) => runtimeStatus.record(level, message));
+    deps.record ??
+    ((level: StatusLevel, message: string) =>
+      runtimeStatus.record(level, message));
 
   function isRunning(): boolean {
     return running;
@@ -91,7 +105,10 @@ export function createReseedSynchronizer(deps: ReseedSyncDeps): ReseedSynchroniz
 
     syncReseedRequests(deps)
       .then((count) => {
-        record("info", `[reseed-sync] Successfully synchronized ${count} requests`);
+        record(
+          "info",
+          `[reseed-sync] Successfully synchronized ${count} requests`,
+        );
       })
       .catch((_err) => {
         // syncReseedRequests already marked store failed, recorded error, and rethrew.

@@ -220,7 +220,9 @@ function createApp(deps?: AppDeps): Hono {
 
         // Deduplicate by id, then enforce declared caps limit of 100
         const seen = new Set<string>();
-        const items = (useSearch ? parseSearchResults(html) : parseBrowseResults(html))
+        const items = (
+          useSearch ? parseSearchResults(html) : parseBrowseResults(html)
+        )
           .filter((item) => {
             if (seen.has(item.id)) return false;
             seen.add(item.id);
