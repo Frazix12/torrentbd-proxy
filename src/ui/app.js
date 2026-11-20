@@ -236,7 +236,7 @@
           '<div class="sidebar-footer">' +
             '<div class="version-line"><span class="dot"></span><span id="versionText">v—</span></div>' +
             '<div class="auth-line" id="authLine"></div>' +
-            '<button class="btn btn-ghost btn-block" type="button" id="logoutBtn" hidden>' + svgMarkup('logout') + ' Log out</button>' +
+            '<button class="btn btn-ghost btn-sm logout-btn" type="button" id="logoutBtn" hidden>Log out</button>' +
           '</div>' +
         '</aside>' +
         '<div class="sidebar-backdrop" id="sidebarBackdrop"></div>' +
@@ -255,8 +255,7 @@
       '<div class="toast-container" id="toasts"></div>' +
       '<div id="overlayRoot"></div>';
     document.getElementById('brandMark').innerHTML = svgMarkup('logo');
-    var logout = document.getElementById('logoutBtn');
-    logout.insertBefore(icon('logout'), logout.firstChild);
+    document.getElementById('logoutBtn').prepend(icon('logout'));
   }
 
   function buildNav() {

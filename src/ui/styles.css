@@ -19,6 +19,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; min-height: 100%; }
 body {
   background: var(--bg);
@@ -95,6 +96,9 @@ h1, h2, h3, p { margin: 0; }
 .version-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(53, 208, 127, .12); flex: none; }
 .auth-line { font-size: 11px; color: var(--muted); }
+.logout-btn { align-self: flex-start; padding: 4px 9px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.logout-btn .icon, .logout-btn .icon svg { width: 14px; height: 14px; display: inline-flex; }
+.logout-btn:hover { color: var(--red); background: rgba(239, 71, 111, .08); border-color: rgba(239, 71, 111, .3); }
 .sidebar-backdrop { display: none; }
 
 .main { margin-left: var(--sidebar-w); min-height: 100vh; display: flex; flex-direction: column; }
