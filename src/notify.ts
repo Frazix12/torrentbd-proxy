@@ -5,8 +5,41 @@
 
 import { config } from "./config";
 
-export function notify(message: string): void {
+const DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+const recentNotifications = new Map<string, number>();
+
+function isDuplicate(message: string): boolean {
+  const now = Date.now();
+  const last = recentNotifications.get(message);
+  if (last !== undefined && now - last < DEDUPE_WINDOW_MS) return true;
+
+  recentNotifications.set(message, now);
+  // Keep the map bounded (one entry per distinct message).
+  if (recentNotifications.size > 100) {
+    for (const [key, sentAt] of recentNotifications) {
+      if (now - sentAt > DEDUPE_WINDOW_MS) recentNotifications.delete(key);
+    }
+  }
+  return false;
+}
+
+async function post(url: string, init: RequestInit): Promise<void> {
+  try {
+    await fetch(url, { ...init, signal: AbortSignal.timeout(5000) });
+  } catch {
+    // One retry after a short pause — webhooks are best-effort.
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    try {
+      await fetch(url, { ...init, signal: AbortSignal.timeout(5000) });
+    } catch (err) {
+      console.error("[notify] Webhook failed:", err);
+    }
+  }
+}
+
+export function notify(message: string, force = false): void {
   if (!config.notifyWebhookUrl) return;
+  if (!force && isDuplicate(message)) return;
 
   const url = config.notifyWebhookUrl;
   const isJsonHook =
@@ -16,11 +49,5 @@ export function notify(message: string): void {
     ? { "Content-Type": "application/json" }
     : { "Content-Type": "text/plain" };
 
-  fetch(url, {
-    method: "POST",
-    headers,
-    body,
-    signal: AbortSignal.timeout(5000),
-  }).catch((err) => console.error("[notify] Webhook failed:", err));
-  // ponytail: fire-and-forget; add await + retry queue if delivery guarantees matter
+  void post(url, { method: "POST", headers, body });
 }

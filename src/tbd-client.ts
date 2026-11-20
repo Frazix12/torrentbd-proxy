@@ -1,11 +1,22 @@
 // src/tbd-client.ts
 // Makes authenticated HTTP requests to TorrentBD's AJAX endpoints.
 // Detects session expiry (login redirect) and triggers re-login automatically.
+// Transient Cloudflare challenges are retried with the SAME session first —
+// invalidating immediately on every 403 caused a re-login storm.
 
 import { config } from "./config";
 import { getSessionHeaders, invalidateSession } from "./session";
+import { logger } from "./logger";
+import { metrics } from "./metrics";
 
 const BASE = config.tbdBaseUrl;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+async function backoff(attempt: number): Promise<void> {
+  await sleep(350 * attempt + Math.floor(Math.random() * 250));
+}
 
 // Detects if a response URL or HTML body indicates a login redirect.
 function isLoginRedirect(html: string, finalUrl?: string): boolean {
@@ -27,7 +38,7 @@ function isCloudflareChallenge(html: string, status?: number): boolean {
 }
 
 // Makes an authenticated POST to a TBD AJAX endpoint.
-// Retries once on session expiry.
+// Retry policy: transient challenge -> same session -> invalidate -> give up.
 async function tbdPost(
   path: string,
   body: URLSearchParams,
@@ -48,20 +59,35 @@ async function tbdPost(
   });
 
   const html = await res.text();
+  const challenged = isCloudflareChallenge(html, res.status);
+  const loginRedirect = isLoginRedirect(html, res.url);
 
-  if (
-    (isLoginRedirect(html, res.url) ||
-      isCloudflareChallenge(html, res.status)) &&
-    attempt === 0
-  ) {
+  if (loginRedirect && attempt === 0) {
+    logger.info("tbd-client", `Session expired on ${path}; re-authenticating`);
     invalidateSession();
     return tbdPost(path, body, 1);
   }
 
-  if (isCloudflareChallenge(html, res.status)) {
+  if (challenged && attempt < 2) {
+    metrics.challenge();
+    if (attempt === 1) invalidateSession();
+    logger.warn(
+      "tbd-client",
+      `Cloudflare challenge on ${path} (HTTP ${res.status}), retry ${
+        attempt + 1
+      }/2`,
+    );
+    await backoff(attempt + 1);
+    return tbdPost(path, body, attempt + 1);
+  }
+
+  if (challenged) {
     throw new Error(
       `Cloudflare challenge blocked ${path} (HTTP ${res.status})`,
     );
+  }
+  if (loginRedirect) {
+    throw new Error(`Session expired on ${path} after re-authentication`);
   }
 
   return html;
@@ -123,10 +149,25 @@ export async function downloadTorrent(
     signal: AbortSignal.timeout(60000),
   });
 
-  // Re-login and retry once if challenged or redirected to login
-  if ((!res.ok || res.url.includes("account-login.php")) && attempt === 0) {
+  const challenged = res.status === 403 || res.status === 503;
+  const loginRedirect = res.url.includes("account-login.php");
+
+  if (loginRedirect && attempt === 0) {
     invalidateSession();
     return downloadTorrent(id, 1);
+  }
+
+  if (challenged && attempt < 2) {
+    metrics.challenge();
+    if (attempt === 1) invalidateSession();
+    logger.warn(
+      "tbd-client",
+      `Cloudflare challenge on download ${id} (HTTP ${res.status}), retry ${
+        attempt + 1
+      }/2`,
+    );
+    await backoff(attempt + 1);
+    return downloadTorrent(id, attempt + 1);
   }
 
   if (!res.ok) {
@@ -164,17 +205,32 @@ export async function fetchReseedPage(
   });
   const html = await response.text();
   const challenged = isCloudflareChallenge(html, response.status);
+  const loginRedirect = isLoginRedirect(html, response.url);
 
-  if ((isLoginRedirect(html, response.url) || challenged) && attempt === 0) {
+  if (loginRedirect && attempt === 0) {
     invalidateSession();
     return fetchReseedPage(target.href, 1);
   }
+
+  if (challenged && attempt < 2) {
+    metrics.challenge();
+    if (attempt === 1) invalidateSession();
+    logger.warn(
+      "tbd-client",
+      `Cloudflare challenge on reseed page (HTTP ${response.status}), retry ${
+        attempt + 1
+      }/2`,
+    );
+    await backoff(attempt + 1);
+    return fetchReseedPage(target.href, attempt + 1);
+  }
+
   if (challenged) {
     throw new Error(
       `Cloudflare challenge blocked reseed page (HTTP ${response.status})`,
     );
   }
-  if (!response.ok || isLoginRedirect(html, response.url)) {
+  if (!response.ok || loginRedirect) {
     throw new Error(`Reseed page failed: HTTP ${response.status}`);
   }
   return html;

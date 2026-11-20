@@ -13,6 +13,14 @@ services:
       - cloak-profile:/data/cloak-profile
     shm_size: 2gb
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6950/health"]
       interval: 30s

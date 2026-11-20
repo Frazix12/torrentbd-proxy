@@ -8,6 +8,26 @@ function required(name: string): string {
   return val;
 }
 
+function numberEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function publicBaseUrl(raw: string | undefined): string {
+  if (!raw || raw.trim() === "") return "";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("invalid protocol");
+    }
+    return url.origin;
+  } catch {
+    throw new Error("PUBLIC_BASE_URL must be an absolute http(s) URL");
+  }
+}
+
 export const DEFAULT_PORT = 6950;
 
 const cloakProfileDir = process.env.CLOAK_PROFILE_DIR ?? "/data/cloak-profile";
@@ -18,15 +38,11 @@ export const config = {
   tbdTotpSecret: required("TBD_TOTP_SECRET"),
   tbdBaseUrl: process.env.TBD_BASE_URL ?? "https://www.torrentbd.net",
   proxyApiKey: required("PROXY_API_KEY"),
-  cacheTtlSeconds: Number(process.env.CACHE_TTL_SECONDS ?? "300"),
-  port: Number(process.env.PORT ?? DEFAULT_PORT),
+  cacheTtlSeconds: numberEnv("CACHE_TTL_SECONDS", 300),
+  port: numberEnv("PORT", DEFAULT_PORT),
   cloakProfileDir,
-  healthCheckIntervalMinutes: Number(
-    process.env.HEALTH_CHECK_INTERVAL_MINUTES ?? "30",
-  ),
-  reseedSyncIntervalHours: Number(
-    process.env.RESEED_SYNC_INTERVAL_HOURS ?? "6",
-  ),
+  healthCheckIntervalMinutes: numberEnv("HEALTH_CHECK_INTERVAL_MINUTES", 30),
+  reseedSyncIntervalHours: numberEnv("RESEED_SYNC_INTERVAL_HOURS", 6),
   reseedDbPath:
     process.env.RESEED_DB_PATH ??
     (process.env.NODE_ENV === "test"
@@ -38,4 +54,14 @@ export const config = {
       ? ":memory:"
       : `${cloakProfileDir}/cache.sqlite`),
   notifyWebhookUrl: process.env.NOTIFY_WEBHOOK_URL ?? "",
+
+  // Optional dashboard access key. Empty = LAN access stays open (legacy behaviour).
+  dashboardApiKey: process.env.DASHBOARD_API_KEY ?? "",
+  // Canonical external URL used in Torznab enclosure links. Empty = derive from request.
+  publicBaseUrl: publicBaseUrl(process.env.PUBLIC_BASE_URL),
+  // Only trust X-Forwarded-* headers when explicitly enabled (reverse-proxy setups).
+  trustProxy: process.env.TRUST_PROXY === "true",
+  logLevel: (process.env.LOG_LEVEL ?? "info").toLowerCase(),
+  rateLimitMax: numberEnv("RATE_LIMIT_MAX", 30),
+  rateLimitWindowMs: numberEnv("RATE_LIMIT_WINDOW_MS", 60_000),
 };

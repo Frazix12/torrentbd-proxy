@@ -14,5 +14,7 @@ COPY tsconfig.json ./
 
 EXPOSE 6950
 
-# pi-lens-ignore: dockerfile.security.missing-user.missing-user
+# The CloakBrowser base image runs Xvfb and Chromium as root; switching users
+# here breaks the display/profile permissions. Hardening is applied in
+# docker-compose.yml instead (no-new-privileges, capped PIDs, log rotation).
 CMD ["bun", "src/index.ts"]

@@ -17,6 +17,10 @@ const first = {
   details: { Reason: "Needed" },
 };
 
+// Retention pruning is relative to "now", so history tests must use recent dates.
+const minutesAgo = (n: number): string =>
+  new Date(Date.now() - n * 60_000).toISOString();
+
 describe("reseed store", () => {
   it("initializes with idle metadata and empty requests", () => {
     const store = createReseedStore(":memory:");
@@ -115,10 +119,10 @@ describe("reseed store", () => {
     const store = createReseedStore(":memory:");
     store.replaceSnapshot(
       [first, { ...first, torrentId: "43", title: "Two" }],
-      "2026-09-08T00:00:00Z",
+      minutesAgo(30),
     );
     // Second sync drops torrent 43
-    store.replaceSnapshot([first], "2026-09-08T00:05:00Z");
+    store.replaceSnapshot([first], minutesAgo(25));
     expect(store.list().map((r) => r.torrentId)).toEqual(["42"]);
     const history = store.listHistory();
     expect(history.map((r) => r.torrentId)).toEqual(["43"]);
@@ -128,11 +132,11 @@ describe("reseed store", () => {
 
   it("re-appears a previously removed request when it comes back", () => {
     const store = createReseedStore(":memory:");
-    store.replaceSnapshot([first], "2026-09-08T00:00:00Z");
-    store.replaceSnapshot([], "2026-09-08T00:05:00Z"); // remove it
+    store.replaceSnapshot([first], minutesAgo(30));
+    store.replaceSnapshot([], minutesAgo(25)); // remove it
     expect(store.list()).toHaveLength(0);
     expect(store.listHistory()).toHaveLength(1);
-    store.replaceSnapshot([first], "2026-09-08T00:10:00Z"); // comes back
+    store.replaceSnapshot([first], minutesAgo(20)); // comes back
     expect(store.list()).toHaveLength(1);
     expect(store.list()[0].removedAt).toBeNull();
     store.close();

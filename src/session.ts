@@ -8,6 +8,8 @@ import { TOTP } from "otpauth";
 import { config } from "./config";
 import { runtimeStatus } from "./status";
 import { notify } from "./notify";
+import { metrics } from "./metrics";
+import { logger } from "./logger";
 
 interface Session {
   cookies: Array<{ name: string; value: string; expires?: number }>;
@@ -113,8 +115,10 @@ async function solveTurnstileUntilResolved(
       const frameUrl = frame.url();
       if (frameUrl !== loggedFrameUrl) {
         loggedFrameUrl = frameUrl;
-        console.log(
-          "[session] Cloudflare Turnstile challenge detected — attempting to solve...",
+        metrics.challenge();
+        logger.info(
+          "session",
+          "Cloudflare Turnstile challenge detected — attempting to solve...",
         );
         runtimeStatus.record(
           "info",
@@ -236,9 +240,17 @@ async function syncSession(): Promise<void> {
         );
         const currentUrl = page.url();
         const title = await page.title();
+        // A positive login-form signal is safer than relying on cookie names or
+        // a specific username: if the site markup changes we simply keep using
+        // the stored cookies instead of re-authenticating forever.
+        const loginFormVisible = await page
+          .locator("#username")
+          .isVisible()
+          .catch(() => false);
         const isValid =
           !currentUrl.includes("account-login.php") &&
-          !title.includes("Just a moment");
+          !title.includes("Just a moment") &&
+          !loginFormVisible;
 
         if (isValid) {
           runtimeStatus.record(
@@ -376,7 +388,8 @@ async function syncSession(): Promise<void> {
     session = { cookies, userAgent };
     forceLogin = false;
     runtimeStatus.markLogin();
-    console.log("[session] Login successful.");
+    metrics.login();
+    logger.info("session", "Login successful.");
     runtimeStatus.record("info", "Session established and profile persisted.");
   } catch (err) {
     runtimeStatus.setSessionState("error");

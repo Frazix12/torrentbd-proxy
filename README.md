@@ -44,6 +44,27 @@ docker compose up -d --build
 
 The proxy starts on **port 6950**. On first run it logs in and saves the session — subsequent restarts reuse stored cookies and skip login entirely. The search result cache also persists across restarts.
 
+Open **http://&lt;your-host&gt;:6950** for the new dashboard UI (Sonarr/Radarr-style dark theme): status/health overview, torrent search, reseed requests, activity log, and settings.
+
+---
+
+## Dashboard UI & security
+
+The dashboard is a dependency-free SPA served directly by the proxy at `/` (assets under `/ui/`). Set `DASHBOARD_API_KEY` in `.env` and rebuild to require a login key for every dashboard and admin route — the UI stores the key in your browser's `localStorage` and sends it as `X-Dashboard-Key`. Leave it blank for the current open-LAN behaviour.
+
+Additional hardening options:
+
+| Variable | Default | Description |
+|---|---|---|
+| `DASHBOARD_API_KEY` | _(empty)_ | Guards `/`, `/status`, `/reseed*`, `/test`, `/metrics` and `/api/ui/*` |
+| `PUBLIC_BASE_URL` | _(empty)_ | Canonical URL used in Torznab enclosure links; prevents Host-header spoofing |
+| `TRUST_PROXY` | `false` | Trust `X-Forwarded-For` for rate limiting (only behind a trusted proxy) |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error` |
+| `RATE_LIMIT_MAX` | `30` | Search requests allowed per IP per window |
+| `RATE_LIMIT_WINDOW_MS` | `60000` | Rate-limit window in milliseconds |
+
+The Torznab API key may now be sent as an `X-Api-Key` header instead of `?apikey=`; query parameters still work for older clients. API keys are redacted from logs.
+
 ---
 
 ## Add to Prowlarr
@@ -63,18 +84,24 @@ The proxy starts on **port 6950**. On first run it logs in and saves the session
 
 | Endpoint | Auth | Description |
 |---|---|---|
-| `GET /` | none | Status dashboard |
-| `GET /status` | none | Runtime status JSON |
+| `GET /` | dashboard key¹ | New Sonarr/Radarr-style dashboard SPA |
+| `GET /ui/styles.css`, `/ui/app.js` | dashboard key¹ | UI static assets |
+| `GET /status` | dashboard key¹ | Runtime status JSON |
+| `GET /metrics` | dashboard key¹ | Request/cache/session counters |
 | `GET /health` | none | Docker health check |
-| `POST /test` | none | Run feature health checks on demand |
-| `GET /reseed` | none | Reseed requests dashboard |
-| `GET /reseed-data` | none | Active reseed snapshot JSON |
-| `GET /reseed-history` | none | Recently fulfilled/removed requests (last 30 days) |
-| `POST /reseed-refresh` | none | Trigger manual reseed sync |
-| `GET /reseed-download?id=<id>` | none | Download torrent by ID (no API key on LAN) |
-| `GET /api?t=caps&apikey=<key>` | apikey | Torznab capabilities |
-| `GET /api?t=search&q=<query>&apikey=<key>` | apikey | Search torrents (rate limited: 30 req/60s) |
-| `GET /download?id=<id>&apikey=<key>` | apikey | Download torrent |
+| `POST /test` | dashboard key¹ | Run feature health checks on demand |
+| `GET /reseed` | dashboard key¹ | Legacy reseed requests dashboard |
+| `GET /reseed-data` | dashboard key¹ | Active reseed snapshot JSON |
+| `GET /reseed-history` | dashboard key¹ | Recently fulfilled/removed requests (last 30 days) |
+| `POST /reseed-refresh` | dashboard key¹ | Trigger manual reseed sync |
+| `GET /reseed-download?id=<id>` | dashboard key¹ | Download torrent by ID |
+| `GET /api/ui/*` | dashboard key¹ | JSON API used by the SPA (config, status, metrics, search, reseed, test, download) |
+| `GET /api?t=caps&apikey=<key>` | apikey² | Torznab capabilities |
+| `GET /api?t=search&q=<query>&apikey=<key>` | apikey² | Search torrents (rate limited: 30 req/60s) |
+| `GET /download?id=<id>&apikey=<key>` | apikey² | Download torrent |
+
+¹ Only when `DASHBOARD_API_KEY` is set; otherwise open on the LAN.
+² `X-Api-Key: <key>` header is preferred; `?apikey=` still works.
 
 ---
 
