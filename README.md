@@ -50,7 +50,17 @@ Open **http://&lt;your-host&gt;:6950** for the new dashboard UI (Sonarr/Radarr-s
 
 ## Dashboard UI & security
 
-The dashboard is a dependency-free SPA served directly by the proxy at `/` (assets under `/ui/`). Set `DASHBOARD_API_KEY` in `.env` and rebuild to require a login key for every dashboard and admin route — the UI stores the key in your browser's `localStorage` and sends it as `X-Dashboard-Key`. Leave it blank for the current open-LAN behaviour.
+The dashboard is a dependency-free SPA served directly by the proxy at `/` (assets under `/ui/`). It has five sidebar pages:
+
+| Page | What it shows |
+|---|---|
+| **Dashboard** | Session state, uptime, cache hit rate, request metrics, feature-health table, recent activity (auto-refreshes every 30s) |
+| **Search** | Search TorrentBD by keyword and category, with live results and direct download links |
+| **Reseed Requests** | Active/history tabs, sync stats and a manual refresh button |
+| **Activity** | Full event log with level filtering |
+| **Settings** | Connection details, dashboard-key management and a "Test connection" action |
+
+Set `DASHBOARD_API_KEY` in `.env` and rebuild to require a login key for every dashboard and admin route — the UI shows a login screen on first load, stores the key in your browser's `localStorage` and sends it as `X-Dashboard-Key`. A compact **Log out** button appears in the sidebar footer only when authentication is enabled; clicking it clears the stored key. Leave `DASHBOARD_API_KEY` blank for the current open-LAN behaviour (no login screen, no logout button).
 
 Additional hardening options:
 
